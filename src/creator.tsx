@@ -138,7 +138,7 @@ export function CreatorHandle() {
         placeholder="samtrains"
         error={issue || err}
       />
-      {handle && !issue && (
+      {!!handle && !issue && (
         <Notice>@{handle} is available in this demo.</Notice>
       )}
       <Card>
@@ -247,7 +247,7 @@ export function CreatorProfile() {
         value={photo}
         onChange={setPhoto}
       />
-      {msg && <Notice error>{msg}</Notice>}
+      {!!msg && <Notice error>{msg}</Notice>}
       <Button
         title="Save channel profile"
         onPress={() => {
@@ -543,7 +543,7 @@ export function UploadScreen() {
           }}
         />
       </Card>
-      {msg && <Notice error>{msg}</Notice>}
+      {!!msg && <Notice error>{msg}</Notice>}
       <Button
         title="Use sample video"
         secondary
@@ -670,7 +670,7 @@ export function WorkoutEditor({ id }: { id?: string }) {
           }
         }}
       />
-      {msg && <Notice>{msg}</Notice>}
+      {!!msg && <Notice>{msg}</Notice>}
       <Button
         title="Publish workout"
         disabled={busy}
@@ -823,7 +823,7 @@ export function ProgramEditor({ id }: { id?: string }) {
       <T size={12} color={C.muted}>
         Members repeat this ordered sequence across the program’s weeks.
       </T>
-      {msg && <Notice error>{msg}</Notice>}
+      {!!msg && <Notice error>{msg}</Notice>}
       <Button title="Publish program" onPress={() => save(true)} />
       <Button
         title="Save program draft"
@@ -865,7 +865,7 @@ export function CreatorPrice() {
         configured with the backend. Existing demo memberships retain their
         starting price.
       </Notice>
-      {msg && <Notice error>{msg}</Notice>}
+      {!!msg && <Notice error>{msg}</Notice>}
       <Button
         title="Save monthly price"
         onPress={() => {
@@ -1034,7 +1034,7 @@ export function CreatorShare() {
           }}
         />
       </Card>
-      {err && <Notice error>{err}</Notice>}
+      {!!err && <Notice error>{err}</Notice>}
       <Notice>
         This is your planned production link. In this frontend demo, the channel
         is only available on this device.

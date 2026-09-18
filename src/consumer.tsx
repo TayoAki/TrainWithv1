@@ -248,7 +248,7 @@ export function Channel({
           }}
         />
       </Row>
-      {shareError && <Notice error>{shareError}</Notice>}
+      {!!shareError && <Notice error>{shareError}</Notice>}
       <Heading title={c.tagline} description={c.bio} />
       <Chips
         items={["Workouts", "Programs", "About"]}
@@ -615,7 +615,7 @@ export function Auth({ id }: { id?: string }) {
         placeholder="sam@example.com"
         keyboardType="email-address"
       />
-      {err && <Notice error>{err}</Notice>}
+      {!!err && <Notice error>{err}</Notice>}
       <Button title="Continue with these details" onPress={() => enter()} />
       <Button
         title="Try with a demo account"
@@ -711,7 +711,7 @@ export function Membership({ id }: { id?: string }) {
         Demo checkout · No charge. This previews a monthly membership for this
         creator only.
       </Notice>
-      {error && <Notice error>{error}</Notice>}
+      {!!error && <Notice error>{error}</Notice>}
       {hasAccess(state, c.id) ? (
         <Button
           title="Open my workouts"
@@ -1110,7 +1110,7 @@ export function EditProfile() {
         onChange={setEmail}
         keyboardType="email-address"
       />
-      {msg && <Notice>{msg}</Notice>}
+      {!!msg && <Notice>{msg}</Notice>}
       <Button
         title="Save profile"
         onPress={() => {
@@ -1154,7 +1154,7 @@ export function Support() {
         multiline
         placeholder="What would make this better?"
       />
-      {msg && <Notice>{msg}</Notice>}
+      {!!msg && <Notice>{msg}</Notice>}
       <Button
         title="Save demo support request"
         disabled={message.trim().length < 10}

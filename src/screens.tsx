@@ -70,7 +70,7 @@ export function AppScreen({
   const Screen = creators[screen] || screens[screen];
   return (
     <View style={{ flex: 1 }}>
-      {error && <Notice error>{error}</Notice>}
+      {!!error && <Notice error>{error}</Notice>}
       {Screen ? (
         <Screen id={id} handle={handle} />
       ) : (

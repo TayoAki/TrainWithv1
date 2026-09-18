@@ -221,7 +221,7 @@ export function Field({
           ...(multiline ? { height: 112, textAlignVertical: "top" } : {}),
         }}
       />
-      {error && (
+      {!!error && (
         <T size={12} color={C.red}>
           {error}
         </T>
@@ -292,7 +292,7 @@ export function Heading({ eyebrow, title, description, action }: any) {
         </T>
         {action}
       </Row>
-      {description && <T color={C.muted}>{description}</T>}
+      {!!description && <T color={C.muted}>{description}</T>}
     </View>
   );
 }
@@ -386,7 +386,7 @@ export function Item({ title, subtitle, onPress, photo, icon, end }: any) {
       ) : null}
       <View style={{ flex: 1, gap: 4 }}>
         <T bold>{title}</T>
-        {subtitle && (
+        {!!subtitle && (
           <T size={12} color={C.muted}>
             {subtitle}
           </T>
