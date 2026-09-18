@@ -40,8 +40,37 @@ npm run web
 the codespace is ready to go. Port 8081 is forwarded automatically and opens in
 a browser preview; use "Open in Browser" on the Ports tab for a full tab.
 
-Expo Go on a physical phone cannot reach a codespace over LAN. For a device,
-run the project locally instead, or use `npx expo start --tunnel`.
+For a physical device, see "Run on a physical device" below — a codespace
+cannot be reached over your LAN, but `npx expo start --tunnel` works from one.
+
+### Run on a physical device
+
+Expo Go needs to reach the Metro bundler. On a local machine that happens over
+your Wi-Fi; from a codespace it cannot, because your phone is not on the same
+network. A tunnel solves this by dialling _out_ to a public relay, so the phone
+connects to a public URL instead of a LAN address — no router setup, and it
+works on cellular.
+
+```sh
+npx expo start --tunnel
+```
+
+Scan the QR code with a compatible Expo Go release. `@expo/ngrok` is already a
+devDependency, so there is nothing else to install. This works from a codespace
+or a local machine.
+
+If the tunnel cannot reach ngrok it exits with `ngrok tunnel took too long to
+connect`; that means outbound access is blocked, which is common on locked-down
+corporate networks and in sandboxed CI containers. Run locally on the same
+Wi-Fi instead:
+
+```sh
+npm start
+```
+
+To view the **web** build on a phone without Expo Go, forward port 8081 from
+the codespace, set its visibility to Public on the Ports tab, and open the URL
+in the phone's browser. The layout is responsive down to 390px.
 
 ### Serve a built web bundle
 
