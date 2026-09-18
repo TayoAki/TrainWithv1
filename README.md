@@ -26,15 +26,35 @@ npm run web
 
 Codex Run and Run Web actions are configured in `.codex/environments/environment.toml`. The executable runner also supports `--ios`, `--android`, `--tunnel`, `--dev-client`, `--export-web`, and `--doctor`. The default uses Expo Go; no native prebuild or cloud build is required.
 
-### Preview the included web build without installing dependencies
+### Run it in GitHub Codespaces
 
-With Python 3 installed, run from this folder:
+The quickest way to see the app without installing anything locally. From the
+repository page choose **Code → Codespaces → Create codespace on this branch**,
+then once it opens:
 
 ```sh
+npm run web
+```
+
+`.devcontainer/devcontainer.json` pins Node 22 and runs `npm ci` on create, so
+the codespace is ready to go. Port 8081 is forwarded automatically and opens in
+a browser preview; use "Open in Browser" on the Ports tab for a full tab.
+
+Expo Go on a physical phone cannot reach a codespace over LAN. For a device,
+run the project locally instead, or use `npx expo start --tunnel`.
+
+### Serve a built web bundle
+
+`dist/` is a build artifact and is not committed, so generate it first:
+
+```sh
+npm run export:web
 python3 script/serve_web.py
 ```
 
-Open `http://localhost:8080`. This serves the bundled `dist` folder locally. Do not open `dist/index.html` directly with a `file://` URL. Choose `--port 8090` if 8080 is occupied.
+Open `http://localhost:8080`. Choose `--port 8090` if 8080 is occupied. Do not open `dist/index.html` directly with a `file://` URL — the routes need a server.
+
+To preview without installing anything, download the `web-bundle` artifact from a CI run of this branch, unzip it to `dist/`, and run `script/serve_web.py` against it.
 
 ## Try the consumer flow
 
