@@ -3,10 +3,8 @@ const path = require("node:path");
 const { JSDOM, VirtualConsole } = require("jsdom");
 const {
   getByRole,
-  getByLabelText,
   fireEvent,
   waitFor,
-  getByText,
   getAllByText,
   getAllByLabelText,
   isInaccessible,

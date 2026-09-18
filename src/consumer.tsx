@@ -1,24 +1,19 @@
 import React, { useState, useEffect } from "react";
-import { View, Pressable, useWindowDimensions, Share } from "react-native";
+import { View, Pressable, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import {
   Check,
   ArrowRight,
   Play,
   LockKeyhole,
-  Bookmark,
   Dumbbell,
-  Clock3,
   CalendarDays,
-  LogOut,
   Heart,
-  Share2,
-  ChevronRight,
   CheckCircle2,
 } from "lucide-react-native";
 import * as Clipboard from "expo-clipboard";
 import { useStore } from "./store";
-import { Creator, Workout, hasAccess } from "./data";
+import { Workout, hasAccess } from "./data";
 import {
   Shell,
   T,
@@ -729,7 +724,8 @@ export function Membership({ id }: { id?: string }) {
           loading={busy}
           onPress={() => {
             setError("");
-            state.user ? setBusy(true) : go(router, "auth", id);
+            if (state.user) setBusy(true);
+            else go(router, "auth", id);
           }}
         />
       )}

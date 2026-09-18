@@ -1,0 +1,6 @@
+node_modules/
+dist/
+dist-native/
+.expo/
+package-lock.json
+assets/

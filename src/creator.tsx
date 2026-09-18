@@ -1,31 +1,20 @@
 import React, { useState } from "react";
-import { View, Pressable, useWindowDimensions } from "react-native";
+import { View, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import {
   Check,
   Plus,
-  ArrowRight,
-  ArrowUp,
-  ArrowDown,
   Upload,
-  Play,
-  Video,
   Layers,
-  Users,
   Wallet,
-  ExternalLink,
   CheckCircle2,
   Circle,
-  Pencil,
-  Share2,
   Dumbbell,
 } from "lucide-react-native";
 import { useStore } from "./store";
 import {
-  Creator,
   Category,
-  Workout,
   Program,
   uid,
   photos,
@@ -55,7 +44,7 @@ import {
 import { pickVideo } from "./media";
 const categories = ["Strength", "Mobility", "Pilates"];
 export function CreatorStart() {
-  const { state, update } = useStore();
+  const { state } = useStore();
   const router = useRouter();
   return (
     <Shell back creator>
@@ -405,7 +394,7 @@ export function Studio() {
   );
 }
 export function Content({ id }: { id?: string }) {
-  const { state, update } = useStore();
+  const { state } = useStore();
   const router = useRouter();
   const [tab, setTab] = useState(id === "programs" ? "Programs" : "Workouts");
   const list = state.workouts.filter((w) => w.creatorId === state.ownedId);
@@ -532,10 +521,11 @@ export function UploadScreen() {
             try {
               const file = await pickVideo();
               if (file) add(file.uri, file.name.replace(/\.[^.]+$/, ""));
-            } catch (e: any) {
+            } catch (e) {
               setMsg(
-                e.message ||
-                  "Could not save this file. Please try another video.",
+                e instanceof Error && e.message
+                  ? e.message
+                  : "Could not save this file. Please try another video.",
               );
             } finally {
               setBusy(false);
@@ -663,8 +653,12 @@ export function WorkoutEditor({ id }: { id?: string }) {
               setVideo(f.uri);
               setMsg(`Selected ${f.name}. Save to apply.`);
             }
-          } catch (e: any) {
-            setMsg(e.message);
+          } catch (e) {
+            setMsg(
+              e instanceof Error && e.message
+                ? e.message
+                : "Could not select that video. Please try another file.",
+            );
           } finally {
             setBusy(false);
           }

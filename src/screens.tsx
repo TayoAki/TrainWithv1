@@ -5,7 +5,8 @@ import { useStore } from "./store";
 import { C, Shell, Notice, Empty, Button, go } from "./ui";
 import * as Consumer from "./consumer";
 import * as Creator from "./creator";
-const creators: Record<string, React.ComponentType<any>> = {
+export type ScreenProps = { id?: string; handle?: string };
+const creators: Record<string, React.ComponentType<ScreenProps>> = {
   studio: Creator.Studio,
   content: Creator.Content,
   members: Creator.Members,
@@ -20,7 +21,7 @@ const creators: Record<string, React.ComponentType<any>> = {
   "creator-share": Creator.CreatorShare,
   "creator-settings": Creator.CreatorSettings,
 };
-const screens: Record<string, React.ComponentType<any>> = {
+const screens: Record<string, React.ComponentType<ScreenProps>> = {
   discover: Consumer.Discover,
   channel: Consumer.Channel,
   program: Consumer.ProgramScreen,

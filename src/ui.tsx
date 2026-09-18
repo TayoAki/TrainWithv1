@@ -5,17 +5,18 @@ import {
   Pressable,
   TextInput,
   ScrollView,
-  StyleSheet,
   useWindowDimensions,
   ActivityIndicator,
   TextStyle,
+  ViewStyle,
+  StyleProp,
+  KeyboardTypeOptions,
 } from "react-native";
-import { Image } from "expo-image";
+import { Image, ImageStyle } from "expo-image";
 import { useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ArrowLeft,
-  ArrowRight,
   Search,
   CalendarDays,
   UserRound,
@@ -24,11 +25,7 @@ import {
   Users,
   Wallet,
   Dumbbell,
-  Menu,
-  Check,
   ChevronRight,
-  Play,
-  LockKeyhole,
 } from "lucide-react-native";
 import { photos } from "./data";
 const bundledPhotos: Record<string, number> = {
@@ -87,7 +84,15 @@ export function T({
     </Text>
   );
 }
-export function Row({ children, between = false, style }: any) {
+export function Row({
+  children,
+  between = false,
+  style,
+}: {
+  children: React.ReactNode;
+  between?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
   return (
     <View
       style={[
@@ -100,7 +105,13 @@ export function Row({ children, between = false, style }: any) {
     </View>
   );
 }
-export function Card({ children, style }: any) {
+export function Card({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
   return (
     <View
       style={[
@@ -119,7 +130,13 @@ export function Card({ children, style }: any) {
     </View>
   );
 }
-export function Badge({ children, light = false }: any) {
+export function Badge({
+  children,
+  light = false,
+}: {
+  children: React.ReactNode;
+  light?: boolean;
+}) {
   return (
     <View
       style={{
@@ -193,7 +210,16 @@ export function Field({
   keyboardType = "default",
   error,
   editable = true,
-}: any) {
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  keyboardType?: KeyboardTypeOptions;
+  error?: string;
+  editable?: boolean;
+}) {
   return (
     <View style={{ gap: 7 }}>
       <T bold size={13}>
@@ -265,7 +291,15 @@ export function Chips({
     </ScrollView>
   );
 }
-export function Photo({ uri, height = 220, style }: any) {
+export function Photo({
+  uri,
+  height = 220,
+  style,
+}: {
+  uri: string;
+  height?: number;
+  style?: StyleProp<ImageStyle>;
+}) {
   return (
     <Image
       source={bundledPhotos[uri] || { uri }}
@@ -278,7 +312,17 @@ export function Photo({ uri, height = 220, style }: any) {
     />
   );
 }
-export function Heading({ eyebrow, title, description, action }: any) {
+export function Heading({
+  eyebrow,
+  title,
+  description,
+  action,
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
   return (
     <View style={{ gap: 8, marginBottom: 8 }}>
       {eyebrow && (
@@ -296,7 +340,13 @@ export function Heading({ eyebrow, title, description, action }: any) {
     </View>
   );
 }
-export function Notice({ children, error = false }: any) {
+export function Notice({
+  children,
+  error = false,
+}: {
+  children: React.ReactNode;
+  error?: boolean;
+}) {
   return (
     <View
       style={{
@@ -311,7 +361,15 @@ export function Notice({ children, error = false }: any) {
     </View>
   );
 }
-export function Empty({ title, description, action }: any) {
+export function Empty({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
   return (
     <Card style={{ paddingVertical: 38, alignItems: "center" }}>
       <Dumbbell size={32} color={C.muted} />
@@ -348,7 +406,21 @@ export function Progress({ value }: { value: number }) {
     </View>
   );
 }
-export function Item({ title, subtitle, onPress, photo, icon, end }: any) {
+export function Item({
+  title,
+  subtitle,
+  onPress,
+  photo,
+  icon,
+  end,
+}: {
+  title: string;
+  subtitle?: string;
+  onPress?: () => void;
+  photo?: string;
+  icon?: React.ReactNode;
+  end?: React.ReactNode;
+}) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -396,6 +468,15 @@ export function Item({ title, subtitle, onPress, photo, icon, end }: any) {
     </Pressable>
   );
 }
+type NavTab = [
+  label: string,
+  route: string,
+  Icon: React.ComponentType<{
+    size?: number;
+    color?: string;
+    strokeWidth?: number;
+  }>,
+];
 export function Shell({
   children,
   creator = false,
@@ -414,7 +495,7 @@ export function Shell({
   const { width } = useWindowDimensions();
   const desktop = width > 900;
   const insets = useSafeAreaInsets();
-  const tabs = creator
+  const tabs: NavTab[] = creator
     ? [
         ["Studio", "studio", LayoutDashboard],
         ["Content", "content", Layers],
@@ -434,7 +515,7 @@ export function Shell({
         ...(!vertical ? { justifyContent: "space-around" as const } : {}),
       }}
     >
-      {tabs.map(([label, route, Icon]: any) => {
+      {tabs.map(([label, route, Icon]) => {
         const active =
           path.endsWith(route) || (route === "discover" && path === "/");
         return (

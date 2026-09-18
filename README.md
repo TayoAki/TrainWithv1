@@ -96,6 +96,7 @@ npx expo export --platform ios --platform android --output-dir dist-native
 ## Asset credits
 
 Illustrative fitness photos from Unsplash:
+
 - https://images.unsplash.com/photo-1518611012118-696072aa579a
 - https://images.unsplash.com/photo-1517836357463-d25dfeac3438
 - https://images.unsplash.com/photo-1544367567-0f2fcb009e0b
