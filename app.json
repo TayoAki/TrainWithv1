@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "TrainWith",
+    "slug": "trainwith",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/trainwith-icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/trainwith-icon.png",
+        "backgroundColor": "#173F32"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/trainwith-icon.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-video"
+    ],
+    "scheme": "trainwith"
+  }
+}

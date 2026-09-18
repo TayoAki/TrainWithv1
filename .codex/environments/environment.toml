@@ -1,0 +1,12 @@
+version = 1
+name = "TrainWith"
+[setup]
+script = "npm ci"
+[[actions]]
+name = "Run"
+icon = "run"
+command = "./script/build_and_run.sh"
+[[actions]]
+name = "Run Web"
+icon = "run"
+command = "./script/build_and_run.sh --web"
