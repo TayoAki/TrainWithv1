@@ -62,8 +62,8 @@ export const photos = {
   workout:
     "https://images.unsplash.com/photo-1511690743698-d9d85f2fbf38?w=1000&q=85&fit=crop",
 };
-// Bundled original demo clip; replace with coach-owned workout media.
-export const DEMO_VIDEO = "trainwith:demo-session";
+// Bundled sample clip; replace with coach-owned workout media.
+export const SAMPLE_VIDEO = "trainwith:sample-session";
 export function seed(): AppState {
   const creators: Creator[] = [
     {
@@ -130,7 +130,7 @@ export function seed(): AppState {
       level: "Beginner",
       free: i === 0,
       published: true,
-      video: DEMO_VIDEO,
+      video: SAMPLE_VIDEO,
       photo: c.photo,
     })),
   );
@@ -214,6 +214,6 @@ export function publishChecks(s: AppState, c: Creator) {
       ),
     },
     { label: "Set your monthly price", ok: c.price >= 1 },
-    { label: "Complete demo payout setup", ok: c.payoutReady },
+    { label: "Complete payout setup", ok: c.payoutReady },
   ];
 }

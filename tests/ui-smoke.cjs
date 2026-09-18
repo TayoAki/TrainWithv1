@@ -117,12 +117,14 @@ const pass = (name) => {
     pass("free workout completion and undo");
     await click("Explore the membership");
     await click("Continue to sign in");
-    await click("Try with a demo account");
+    await click("Use a sample profile");
     await click("Test payment failure");
-    await click("Start demo membership");
-    await text("The demo payment failed. No membership was added. Try again.");
+    await click("Confirm and join");
+    await text(
+      "The payment could not be completed. No membership was added. Please try again.",
+    );
     await click("Successful payment");
-    await click("Start demo membership");
+    await click("Confirm and join");
     await text("You’re in.");
     await click("Let’s train");
     await click("Start next workout");
@@ -193,8 +195,8 @@ const pass = (name) => {
     await click("Set your monthly price");
     fill("Monthly price (USD)", "23");
     await click("Save monthly price");
-    await click("Complete demo payout setup");
-    await click("Complete demo payout setup");
+    await click("Complete payout setup");
+    await click("Complete payout setup");
     await click("Get ready to publish");
     await click("Publish my channel");
     await text("Your channel is ready.");
@@ -202,12 +204,12 @@ const pass = (name) => {
     await text("Strength for real life.");
     pass("pricing, payout setup and channel publishing");
     await click("Join Sam · $23/month");
-    await click("Start demo membership");
+    await click("Confirm and join");
     await text("You’re in.");
     await click("Profile");
     await click("Open creator studio");
     await click("Members");
-    await text("1 active demo member.");
+    await text("1 active member.");
     await click("Earnings");
     await text("$23.00");
     pass("member purchase updates creator members and earnings");
@@ -215,12 +217,12 @@ const pass = (name) => {
     await click("Switch to member view");
     await click("Profile");
     await click("Help & support");
-    fill("Your feedback", "This is a local demo support test.");
-    await click("Save demo support request");
-    await text("Request saved locally. Nothing was sent to a support team.");
+    fill("Your feedback", "This is a support request test message.");
+    await click("Save request");
+    await text("Your request is saved on this device.");
     pass("support request stays local");
     await pause();
-    const saved = JSON.parse(w.localStorage.getItem("trainwith.demo.v1"));
+    const saved = JSON.parse(w.localStorage.getItem("trainwith.v1"));
     assert.equal(saved.memberships.length, 2);
     assert.ok(saved.completed["maya-1"]);
     assert.equal(

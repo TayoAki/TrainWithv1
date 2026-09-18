@@ -1,16 +1,28 @@
 import React, { createContext, use, useEffect, useState, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppState, seed } from "./data";
-const KEY = "trainwith.demo.v1";
+import type { AppState } from "./data";
+import { seed } from "./data";
+import type { Transition, PaymentGateway } from "./services";
+import { localPaymentGateway } from "./services";
+const KEY = "trainwith.v1";
 type Store = {
   state: AppState;
   ready: boolean;
   error: string;
-  update: (fn: (s: AppState) => AppState) => void;
+  /** Applies a transition from src/services.ts. Screens never build state inline. */
+  apply: (transition: Transition) => void;
+  /** Swappable seam: a real provider replaces this without screen changes. */
+  payments: PaymentGateway;
   reset: () => void;
 };
 const Context = createContext<Store | null>(null);
-export function Provider({ children }: { children: React.ReactNode }) {
+export function Provider({
+  children,
+  payments = localPaymentGateway,
+}: {
+  children: React.ReactNode;
+  payments?: PaymentGateway;
+}) {
   const [state, setState] = useState(seed);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
@@ -27,14 +39,11 @@ export function Provider({ children }: { children: React.ReactNode }) {
             Array.isArray(data.memberships)
           )
             setState(data);
-          else
-            setError(
-              "Saved demo data was incompatible. A fresh demo is ready.",
-            );
+          else setError("Saved data was incompatible and has been reset.");
         }
       })
       .catch(() =>
-        setError("Saved data could not be loaded. A fresh demo is ready."),
+        setError("Saved data could not be loaded and has been reset."),
       )
       .finally(() => setReady(true));
   }, []);
@@ -55,7 +64,8 @@ export function Provider({ children }: { children: React.ReactNode }) {
         state,
         ready,
         error,
-        update: (fn) => setState(fn),
+        apply: (transition) => setState(transition),
+        payments,
         reset: () => {
           setState(seed());
           setError("");

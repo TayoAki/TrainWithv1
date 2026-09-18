@@ -18,7 +18,7 @@ export async function pickVideo(): Promise<{
   if (r.canceled) return null;
   const a = r.assets[0];
   if ((a.size || 0) > 100 * 1024 * 1024)
-    throw new Error("Choose a video smaller than 100 MB for this local demo.");
+    throw new Error("Choose a video smaller than 100 MB.");
   const blob = a.file || (await (await fetch(a.uri)).blob());
   const d = await db();
   const key = `media:${Date.now()}`;

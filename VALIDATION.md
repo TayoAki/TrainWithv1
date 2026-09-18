@@ -2,11 +2,16 @@
 
 ## Passed
 
-- TypeScript strict type check.
+- TypeScript strict type check, with no `any` in the codebase.
+- ESLint (eslint-config-expo) and Prettier: clean.
 - Expo Doctor: 19/21 project checks. See "Environment-limited checks" below.
 - Production Expo web export.
 - iOS and Android JavaScript/Hermes exports (compilation, not installed native builds).
-- Three domain tests: creator-specific membership access/expiration, handle availability/reserved names, and channel publication requirements.
+- Nine domain tests covering the pure transitions in `src/services.ts`:
+  creator-scoped membership access and expiry, handle availability and reserved
+  names, channel publication requirements, one-month membership periods and
+  replacement, cancel-keeps-access, first-completion-wins and clearing,
+  handle claim then rename, workout upsert, and both payment gateway outcomes.
 - Twelve JSDOM interaction groups against the production Expo web bundle:
   1. Application mount and discovery.
   2. Search, channel navigation, program detail and saving.
@@ -16,13 +21,13 @@
   6. Creator onboarding, duplicate-handle validation and disabled launch action.
   7. Creating and publishing free/member workouts.
   8. Building and publishing an ordered program.
-  9. Pricing, demo payout setup and publishing the channel.
+  9. Pricing, payout setup and publishing the channel.
   10. Joining that channel updates creator members and earnings.
   11. Support requests remain local.
   12. Workflow results are written to device storage.
 - Run script shell syntax and help.
-- Bundled photo assets and a valid 30-second H.264 demo video.
-- Real-browser smoke pass. See "Browser pass" below.
+- Bundled photo assets and a valid 30-second H.264 sample video.
+- Real-browser smoke pass, including an accessibility check. See "Browser pass" below.
 
 Machine-readable interaction results: `tests/latest-result.json`.
 
@@ -70,6 +75,46 @@ affected. It was cosmetic, but it obscured UI on every screen during
 development. Behavior is unchanged on every platform; the full check set above
 was re-run after the change.
 
+### Accessibility checked in Chromium
+
+Measured on the rendered page, not asserted from source:
+
+- Colour contrast. Every text colour in the `C` palette clears WCAG AA (4.5:1)
+  for normal text on the surfaces it is used on. `muted` failed before this pass
+  at 3.54:1 on sage, 3.89:1 on bg and 4.14:1 on white, while carrying captions
+  at 11-13px, which count as normal text. It moved from `#728077` to `#626E66`
+  and now measures 4.56 / 5.00 / 5.33.
+- Touch targets. Zero interactive elements render below 44x44 CSS px. The back
+  button (35x35) and the header avatar (34x34) were under the minimum; chips sat
+  at roughly 41. The avatar keeps its 34px circle inside a 44px pressable.
+- Headings. Section titles expose `role="heading"`.
+- Keyboard. Tab order runs logo, navigation, sidebar call to action, profile.
+  Every stop is a real button with an accessible name and a visible focus ring.
+- Form errors. Field errors are announced through `accessibilityHint` plus an
+  `alert` live region, and the input carries `aria-invalid`. The accessible name
+  stays the bare label.
+
+Not covered: a screen reader was not run (VoiceOver/TalkBack), and reduced
+motion, text scaling and high-contrast modes were not exercised.
+
+## Production readiness
+
+The UI is production-shaped, but the app is **not ready for real users**. What is
+missing is integration, not interface:
+
+- Sign-in accepts any name and email. There is no authentication.
+- The checkout charges nothing. `localPaymentGateway` in `src/services.ts` is a
+  stand-in, and the membership screen shows a clearly labelled payment sandbox
+  control that must be deleted when a real provider is wired.
+- `hasAccess` in `src/data.ts` is a presentation check, not a security boundary.
+  Membership authorization has to move server-side before it protects real media.
+- Membership period dates are written by the client. A real backend must own them
+  and handle renewals through provider webhooks.
+- Payouts, support delivery and cross-device channel data do not exist.
+
+See "Wiring a backend" in `README.md`. The seams are confined to
+`src/services.ts`, so screens should not need to change.
+
 ## Not verified in this environment
 
 The browser pass covers layout, routing and image rendering. It does **not**
@@ -85,6 +130,8 @@ cover, and these still need a device/browser acceptance pass:
   forms, and app restart persistence.
 - Touch input. The browser pass used synthetic clicks at a mobile viewport, not
   real touch events on a device.
+- Screen readers. Accessibility semantics were checked in the DOM, but no
+  VoiceOver or TalkBack pass was run.
 
 JSDOM verifies DOM interactions and state changes; it does not replace visual or
 device testing.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { View, Pressable, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -7,12 +7,22 @@ import {
   Play,
   LockKeyhole,
   Dumbbell,
-  CalendarDays,
   Heart,
   CheckCircle2,
+  Settings,
 } from "lucide-react-native";
 import * as Clipboard from "expo-clipboard";
 import { useStore } from "./store";
+import {
+  signIn,
+  signOut,
+  startMembership,
+  setRenewal,
+  completeWorkout,
+  clearCompletion,
+  toggleSavedProgram,
+  addSupportRequest,
+} from "./services";
 import { Workout, hasAccess } from "./data";
 import {
   Shell,
@@ -304,7 +314,7 @@ export function Channel({
           <T>{c.bio}</T>
           <Badge light>{c.category}</Badge>
           <T size={12} color={C.muted}>
-            Demo profile · Illustrative coach and content
+            Sample coach profile
           </T>
         </Card>
       )}
@@ -329,7 +339,7 @@ export function Channel({
   );
 }
 export function ProgramScreen({ id }: { id?: string }) {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const p = state.programs.find((p) => p.id === id && p.published);
   if (!p)
@@ -384,14 +394,7 @@ export function ProgramScreen({ id }: { id?: string }) {
           state.saved.includes(p.id) ? "Saved to my workouts" : "Save program"
         }
         secondary
-        onPress={() =>
-          update((s) => ({
-            ...s,
-            saved: s.saved.includes(p.id)
-              ? s.saved.filter((x) => x !== p.id)
-              : [...s.saved, p.id],
-          }))
-        }
+        onPress={() => apply(toggleSavedProgram(p.id))}
       />
       {!hasAccess(state, c.id) && (
         <Button
@@ -403,7 +406,7 @@ export function ProgramScreen({ id }: { id?: string }) {
   );
 }
 export function WorkoutScreen({ id }: { id?: string }) {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const w = state.workouts.find((w) => w.id === id && w.published);
   if (!w)
@@ -469,13 +472,7 @@ export function WorkoutScreen({ id }: { id?: string }) {
                 : "Mark workout complete"
             }
             onPress={() => {
-              update((s) => ({
-                ...s,
-                completed: {
-                  ...s.completed,
-                  [w.id]: s.completed[w.id] || new Date().toISOString(),
-                },
-              }));
+              apply(completeWorkout(w.id));
               go(router, "complete", w.id);
             }}
           />
@@ -506,7 +503,7 @@ function UserIcon() {
   return <Heart color={C.green} size={19} />;
 }
 export function Complete({ id }: { id?: string }) {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const w = state.workouts.find((w) => w.id === id);
   return (
@@ -550,12 +547,7 @@ export function Complete({ id }: { id?: string }) {
         title="Undo completion"
         subtle
         onPress={() => {
-          if (id)
-            update((s) => {
-              const completed = { ...s.completed };
-              delete completed[id];
-              return { ...s, completed };
-            });
+          if (id) apply(clearCompletion(id));
           go(router, "workout", id);
         }}
       />
@@ -563,7 +555,7 @@ export function Complete({ id }: { id?: string }) {
   );
 }
 export function Auth({ id }: { id?: string }) {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const [name, setName] = useState(state.user?.name || "");
   const [email, setEmail] = useState(state.user?.email || "");
@@ -573,13 +565,13 @@ export function Auth({ id }: { id?: string }) {
       setErr("Add your name and a valid email address.");
       return;
     }
-    update((s) => ({
-      ...s,
-      user: {
-        name: demo ? "Sam Taylor" : name.trim(),
-        email: demo ? "sam@example.com" : email.trim(),
-      },
-    }));
+    apply(
+      signIn(
+        demo
+          ? { name: "Sam Taylor", email: "sam@example.com" }
+          : { name, email },
+      ),
+    );
     go(
       router,
       id === "creator" ? "creator-start" : id ? "membership" : "profile",
@@ -593,10 +585,7 @@ export function Auth({ id }: { id?: string }) {
         title="Make room for you."
         description="Save your progress and train with people who inspire you."
       />
-      <Notice>
-        Frontend demo: no password, email, or real account is created. Use
-        sample details.
-      </Notice>
+      <Notice>Enter your details to save your training on this device.</Notice>
       <Field
         label="Your name"
         value={name}
@@ -613,54 +602,40 @@ export function Auth({ id }: { id?: string }) {
       {!!err && <Notice error>{err}</Notice>}
       <Button title="Continue with these details" onPress={() => enter()} />
       <Button
-        title="Try with a demo account"
+        title="Use a sample profile"
         secondary
         onPress={() => enter(true)}
       />
       <T size={12} color={C.muted}>
-        Your demo profile stays on this device. Secure sign-in will be connected
-        with the backend.
+        Your profile is stored on this device.
       </T>
     </Shell>
   );
 }
 export function Membership({ id }: { id?: string }) {
-  const { state, update } = useStore();
+  const { state, apply, payments } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === id);
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    if (!busy) return;
-    const t = setTimeout(() => {
-      setBusy(false);
-      if (fail) {
-        setError(
-          "The demo payment failed. No membership was added. Try again.",
-        );
-        return;
-      }
-      const now = new Date();
-      const end = new Date(now);
-      end.setMonth(end.getMonth() + 1);
-      update((s) => ({
-        ...s,
-        memberships: [
-          ...s.memberships.filter((m) => m.creatorId !== id),
-          {
-            creatorId: id!,
-            price: c!.price,
-            renews: true,
-            started: now.toISOString(),
-            ends: end.toISOString(),
-          },
-        ],
-      }));
-      go(router, "joined", id);
-    }, 900);
-    return () => clearTimeout(t);
-  }, [busy]);
+  const join = async () => {
+    if (!c || busy) return;
+    setBusy(true);
+    setError("");
+    const result = await payments.charge({
+      creatorId: c.id,
+      amount: c.price,
+      simulateFailure: fail,
+    });
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.reason);
+      return;
+    }
+    apply(startMembership(c.id, c.price));
+    go(router, "joined", c.id);
+  };
   if (!c)
     return (
       <Shell back>
@@ -702,10 +677,7 @@ export function Membership({ id }: { id?: string }) {
           </Row>
         ))}
       </Card>
-      <Notice>
-        Demo checkout · No charge. This previews a monthly membership for this
-        creator only.
-      </Notice>
+      <Notice>A membership applies to this creator’s channel only.</Notice>
       {!!error && <Notice error>{error}</Notice>}
       {hasAccess(state, c.id) ? (
         <Button
@@ -718,28 +690,39 @@ export function Membership({ id }: { id?: string }) {
             busy
               ? "Confirming membership…"
               : state.user
-                ? "Start demo membership"
+                ? "Confirm and join"
                 : "Continue to sign in"
           }
           loading={busy}
           onPress={() => {
-            setError("");
-            if (state.user) setBusy(true);
-            else go(router, "auth", id);
+            if (state.user) join();
+            else {
+              setError("");
+              go(router, "auth", id);
+            }
           }}
         />
       )}
       <T size={12} color={C.muted}>
-        Monthly renewal at ${c.price}. Cancel renewal in Profile → Memberships;
-        access continues through the current period. Demo dates do not create
-        charges.
+        Renews monthly at ${c.price}. Cancel renewal in Profile → Memberships;
+        access continues through the current period.
       </T>
       {state.user && !hasAccess(state, c.id) && (
-        <Chips
-          items={["Successful payment", "Test payment failure"]}
-          value={fail ? "Test payment failure" : "Successful payment"}
-          onChange={(x) => setFail(x === "Test payment failure")}
-        />
+        <Card style={{ backgroundColor: C.sage, borderWidth: 0 }}>
+          <T size={11} bold color={C.muted} style={{ letterSpacing: 1.5 }}>
+            PAYMENT SANDBOX
+          </T>
+          <T size={12} color={C.muted}>
+            No payment provider is connected, so nothing is charged. Choose how
+            the next attempt should resolve. Remove this control once a real
+            gateway is wired up.
+          </T>
+          <Chips
+            items={["Successful payment", "Test payment failure"]}
+            value={fail ? "Test payment failure" : "Successful payment"}
+            onChange={(x) => setFail(x === "Test payment failure")}
+          />
+        </Card>
       )}
     </Shell>
   );
@@ -870,7 +853,7 @@ export function MyWorkouts() {
   );
 }
 export function Profile() {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   return (
     <Shell>
@@ -886,10 +869,7 @@ export function Profile() {
         }
       />
       {!state.user && (
-        <Button
-          title="Sign in to the demo"
-          onPress={() => go(router, "auth")}
-        />
+        <Button title="Sign in" onPress={() => go(router, "auth")} />
       )}
       <Card>
         <Row between>
@@ -923,7 +903,7 @@ export function Profile() {
         />
         <Item
           title="Edit profile"
-          subtitle="Name and demo email"
+          subtitle="Name and email"
           icon={<UserIcon />}
           onPress={() => go(router, "edit-profile")}
         />
@@ -935,15 +915,15 @@ export function Profile() {
         />
         <Item
           title="Help & support"
-          subtitle="Questions, feedback, and demo details"
+          subtitle="Questions and feedback"
           icon={<Heart size={20} color={C.green} />}
           onPress={() => go(router, "support")}
         />
         <Item
-          title="Demo settings"
-          subtitle="What’s connected and reset options"
-          icon={<CalendarDays size={20} color={C.green} />}
-          onPress={() => go(router, "demo-settings")}
+          title="Settings"
+          subtitle="Storage and app data"
+          icon={<Settings size={20} color={C.green} />}
+          onPress={() => go(router, "settings")}
         />
       </View>
       {state.user && (
@@ -951,7 +931,7 @@ export function Profile() {
           title="Sign out"
           subtle
           onPress={() => {
-            update((s) => ({ ...s, user: null }));
+            apply(signOut());
             go(router, "discover");
           }}
         />
@@ -1010,7 +990,7 @@ export function Memberships() {
   );
 }
 export function ManageMembership({ id }: { id?: string }) {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const [confirm, setConfirm] = useState(false);
   const m = state.memberships.find((m) => m.creatorId === id);
@@ -1032,7 +1012,7 @@ export function ManageMembership({ id }: { id?: string }) {
       />
       <Notice>
         {m.renews
-          ? "Your demo membership renews"
+          ? "Your membership renews"
           : "Your renewal is canceled. You can keep training until"}{" "}
         {new Date(m.ends).toLocaleDateString()}.
       </Notice>
@@ -1053,12 +1033,7 @@ export function ManageMembership({ id }: { id?: string }) {
           <Button
             title="Confirm cancellation"
             onPress={() => {
-              update((s) => ({
-                ...s,
-                memberships: s.memberships.map((x) =>
-                  x.creatorId === id ? { ...x, renews: false } : x,
-                ),
-              }));
+              if (id) apply(setRenewal(id, false));
               setConfirm(false);
             }}
           />
@@ -1072,16 +1047,10 @@ export function ManageMembership({ id }: { id?: string }) {
         <Button
           title={m.renews ? "Cancel renewal" : "Resume renewal"}
           secondary
-          onPress={() =>
-            m.renews
-              ? setConfirm(true)
-              : update((s) => ({
-                  ...s,
-                  memberships: s.memberships.map((x) =>
-                    x.creatorId === id ? { ...x, renews: true } : x,
-                  ),
-                }))
-          }
+          onPress={() => {
+            if (m.renews) setConfirm(true);
+            else if (id) apply(setRenewal(id, true));
+          }}
         />
       )}
       <Button
@@ -1093,7 +1062,7 @@ export function ManageMembership({ id }: { id?: string }) {
   );
 }
 export function EditProfile() {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const [name, setName] = useState(state.user?.name || "");
   const [email, setEmail] = useState(state.user?.email || "");
   const [msg, setMsg] = useState("");
@@ -1111,13 +1080,10 @@ export function EditProfile() {
         title="Save profile"
         onPress={() => {
           if (!name.trim() || !/^\S+@\S+\.\S+$/.test(email)) {
-            setMsg("Enter your name and a valid demo email.");
+            setMsg("Enter your name and a valid email address.");
             return;
           }
-          update((s) => ({
-            ...s,
-            user: { name: name.trim(), email: email.trim() },
-          }));
+          apply(signIn({ name, email }));
           setMsg("Profile saved on this device.");
         }}
       />
@@ -1125,7 +1091,7 @@ export function EditProfile() {
   );
 }
 export function Support() {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const [message, setMessage] = useState("");
   const [msg, setMsg] = useState("");
   return (
@@ -1139,8 +1105,7 @@ export function Support() {
         </T>
         <T bold>Where is my progress?</T>
         <T color={C.muted}>
-          Open My workouts → History. This demo saves data on your current
-          device.
+          Open My workouts → History. Your progress is saved on this device.
         </T>
       </Card>
       <Field
@@ -1152,22 +1117,12 @@ export function Support() {
       />
       {!!msg && <Notice>{msg}</Notice>}
       <Button
-        title="Save demo support request"
+        title="Save request"
         disabled={message.trim().length < 10}
         onPress={() => {
-          update((s) => ({
-            ...s,
-            supports: [
-              ...s.supports,
-              {
-                id: Date.now().toString(),
-                message: message.trim(),
-                date: new Date().toISOString(),
-              },
-            ],
-          }));
+          apply(addSupportRequest(message));
           setMessage("");
-          setMsg("Request saved locally. Nothing was sent to a support team.");
+          setMsg("Your request is saved on this device.");
         }}
       />
       <T size={12} color={C.muted}>
@@ -1183,38 +1138,32 @@ export function Support() {
     </Shell>
   );
 }
-export function DemoSettings() {
+export function AppSettings() {
   const { reset } = useStore();
   const router = useRouter();
   const [confirm, setConfirm] = useState(false);
   return (
-    <Shell back title="Demo settings">
-      <Heading title="Built to try the whole journey." />
-      <Notice>
-        This is a frontend prototype. Profiles, memberships, workout
-        completions, creator content, and payout status live on this device.
-      </Notice>
+    <Shell back title="Settings">
+      <Heading
+        title="Your data, your device."
+        description="Profiles, memberships, progress and creator content are stored locally on this device."
+      />
       <Card>
-        <T bold>Connected in this release</T>
-        <T>
-          Navigation, forms, search, local video selection and playback, channel
-          publishing, membership states, and progress tracking.
-        </T>
-        <T bold>Backend comes next</T>
-        <T>
-          Secure accounts, cloud media storage, real payments, creator payouts,
-          support delivery, and share links that work across devices.
+        <T bold>Storage</T>
+        <T color={C.muted}>
+          Workout videos you add are kept on this device and are not uploaded.
+          Removing the app removes them.
         </T>
       </Card>
       {confirm ? (
         <Card>
-          <T bold>Reset this local demo?</T>
+          <T bold>Reset all data?</T>
           <T>
-            This clears your test memberships, progress, and creator edits on
-            this device.
+            This clears your memberships, progress and creator edits on this
+            device. It cannot be undone.
           </T>
           <Button
-            title="Yes, reset demo"
+            title="Yes, reset everything"
             onPress={() => {
               reset();
               go(router, "discover");
@@ -1228,7 +1177,7 @@ export function DemoSettings() {
         </Card>
       ) : (
         <Button
-          title="Reset demo data"
+          title="Reset app data"
           subtle
           onPress={() => setConfirm(true)}
         />

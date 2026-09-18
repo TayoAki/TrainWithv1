@@ -3,7 +3,7 @@ import { View } from "react-native";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useEvent } from "expo";
 import { useFocusEffect } from "expo-router";
-import { DEMO_VIDEO } from "./data";
+import { SAMPLE_VIDEO } from "./data";
 import { resolveVideo } from "./media";
 import { Notice, Button, C, T } from "./ui";
 export function WorkoutPlayer({ uri, photo }: { uri: string; photo: string }) {
@@ -34,7 +34,7 @@ export function WorkoutPlayer({ uri, photo }: { uri: string; photo: string }) {
       ) : (
         <Notice>Preparing video…</Notice>
       )}
-      {uri === DEMO_VIDEO && (
+      {uri === SAMPLE_VIDEO && (
         <T size={11} color={C.muted}>
           Sample player footage, not fitness instruction. Add your own workout
           video in Creator Studio.
@@ -45,7 +45,7 @@ export function WorkoutPlayer({ uri, photo }: { uri: string; photo: string }) {
 }
 function Player({ uri }: { uri: string }) {
   const source =
-    uri === DEMO_VIDEO ? require("../assets/demo-session.mp4") : uri;
+    uri === SAMPLE_VIDEO ? require("../assets/demo-session.mp4") : uri;
   const player = useVideoPlayer(source, (p) => {
     p.loop = false;
   });

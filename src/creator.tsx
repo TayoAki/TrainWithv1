@@ -14,11 +14,20 @@ import {
 } from "lucide-react-native";
 import { useStore } from "./store";
 import {
+  claimHandle,
+  saveChannelProfile,
+  saveWorkout,
+  saveProgram,
+  setPrice as setChannelPrice,
+  completePayoutSetup,
+  setChannelPublished,
+} from "./services";
+import {
   Category,
   Program,
   uid,
   photos,
-  DEMO_VIDEO,
+  SAMPLE_VIDEO,
   handleError,
   publishChecks,
   hasAccess,
@@ -98,13 +107,13 @@ export function CreatorStart() {
         }}
       />
       <T size={12} color={C.muted}>
-        Demo setup. No billing or payout account is opened.
+        Free to set up. You only pay when you earn.
       </T>
     </Shell>
   );
 }
 export function CreatorHandle() {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const own = state.creators.find((c) => c.id === state.ownedId);
   const [handle, setHandle] = useState(own?.handle || "");
@@ -127,9 +136,7 @@ export function CreatorHandle() {
         placeholder="samtrains"
         error={issue || err}
       />
-      {!!handle && !issue && (
-        <Notice>@{handle} is available in this demo.</Notice>
-      )}
+      {!!handle && !issue && <Notice>@{handle} is available.</Notice>}
       <Card>
         <T size={12} color={C.muted}>
           YOUR CHANNEL LINK
@@ -144,28 +151,7 @@ export function CreatorHandle() {
             setErr(issue);
             return;
           }
-          const id = own?.id || uid("creator");
-          update((s) => ({
-            ...s,
-            ownedId: id,
-            creators: own
-              ? s.creators.map((c) => (c.id === id ? { ...c, handle } : c))
-              : [
-                  ...s.creators,
-                  {
-                    id,
-                    handle,
-                    name: s.user?.name || "Your name",
-                    category: "Strength",
-                    tagline: "",
-                    bio: "",
-                    photo: photos.workout,
-                    price: 0,
-                    published: false,
-                    payoutReady: false,
-                  },
-                ],
-          }));
+          apply(claimHandle(handle, own));
           go(router, "creator-profile");
         }}
       />
@@ -173,7 +159,7 @@ export function CreatorHandle() {
   );
 }
 export function CreatorProfile() {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === state.ownedId)!;
   const [name, setName] = useState(c.name);
@@ -251,21 +237,15 @@ export function CreatorProfile() {
             );
             return;
           }
-          update((s) => ({
-            ...s,
-            creators: s.creators.map((x) =>
-              x.id === c.id
-                ? {
-                    ...x,
-                    name: name.trim(),
-                    tagline: tagline.trim(),
-                    bio: bio.trim(),
-                    category,
-                    photo,
-                  }
-                : x,
-            ),
-          }));
+          apply(
+            saveChannelProfile(c.id, {
+              name,
+              tagline,
+              bio,
+              category,
+              photo,
+            }),
+          );
           go(router, "studio");
         }}
       />
@@ -287,7 +267,7 @@ export function Studio() {
   return (
     <Shell creator wide>
       <Heading
-        eyebrow={`@${c.handle} · ${c.published ? "LIVE IN THIS DEMO" : "DRAFT CHANNEL"}`}
+        eyebrow={`@${c.handle} · ${c.published ? "LIVE" : "DRAFT CHANNEL"}`}
         title={`Let’s build something, ${c.name.split(" ")[0]}.`}
         description="Your next great workout could be someone’s new beginning."
         action={
@@ -298,10 +278,7 @@ export function Studio() {
         {[
           [String(members.length), "Active members"],
           [String(count), "Published workouts"],
-          [
-            `$${members.reduce((n, m) => n + m.price, 0)}`,
-            "Monthly demo revenue",
-          ],
+          [`$${members.reduce((n, m) => n + m.price, 0)}`, "Monthly revenue"],
         ].map(([v, l]) => (
           <Card key={l} style={{ flex: 1, minWidth: 140 }}>
             <T bold size={32}>
@@ -463,32 +440,28 @@ export function Content({ id }: { id?: string }) {
   );
 }
 export function UploadScreen() {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const add = (video: string, title: string) => {
     const c = state.creators.find((c) => c.id === state.ownedId)!;
     const id = uid("workout");
-    update((s) => ({
-      ...s,
-      workouts: [
-        ...s.workouts,
-        {
-          id,
-          creatorId: c.id,
-          title,
-          description: "",
-          minutes: 20,
-          equipment: "Mat",
-          level: "Beginner",
-          free: false,
-          published: false,
-          video,
-          photo: c.photo,
-        },
-      ],
-    }));
+    apply(
+      saveWorkout({
+        id,
+        creatorId: c.id,
+        title,
+        description: "",
+        minutes: 20,
+        equipment: "Mat",
+        level: "Beginner",
+        free: false,
+        published: false,
+        video,
+        photo: c.photo,
+      }),
+    );
     go(router, "workout-editor", id);
   };
   return (
@@ -510,7 +483,7 @@ export function UploadScreen() {
           Your next workout goes here
         </T>
         <T color={C.muted} style={{ textAlign: "center" }}>
-          MP4 recommended · Up to 100 MB in this demo
+          MP4 recommended · Up to 100 MB
         </T>
         <Button
           title={busy ? "Saving video…" : "Choose a video"}
@@ -537,17 +510,17 @@ export function UploadScreen() {
       <Button
         title="Use sample video"
         secondary
-        onPress={() => add(DEMO_VIDEO, "My first workout")}
+        onPress={() => add(SAMPLE_VIDEO, "My first workout")}
       />
       <Notice>
-        Videos stay on this device. The sample is player demonstration footage;
-        upload your own fitness content to try a real workout.
+        Videos stay on this device. The sample is placeholder footage; upload
+        your own fitness content to try a real workout.
       </Notice>
     </Shell>
   );
 }
 export function WorkoutEditor({ id }: { id?: string }) {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const w = state.workouts.find(
     (w) => w.id === id && w.creatorId === state.ownedId,
@@ -587,24 +560,19 @@ export function WorkoutEditor({ id }: { id?: string }) {
       );
       return;
     }
-    update((s) => ({
-      ...s,
-      workouts: s.workouts.map((x) =>
-        x.id === id
-          ? {
-              ...x,
-              title: title.trim(),
-              description: description.trim(),
-              minutes: Number(minutes),
-              equipment: equipment.trim(),
-              level,
-              free: access === "Free sample",
-              published,
-              video,
-            }
-          : x,
-      ),
-    }));
+    apply(
+      saveWorkout({
+        ...w,
+        title: title.trim(),
+        description: description.trim(),
+        minutes: Number(minutes),
+        equipment: equipment.trim(),
+        level,
+        free: access === "Free sample",
+        published,
+        video,
+      }),
+    );
     go(router, "content");
   };
   return (
@@ -683,7 +651,7 @@ export function WorkoutEditor({ id }: { id?: string }) {
   );
 }
 export function ProgramEditor({ id }: { id?: string }) {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const p = state.programs.find(
     (p) => p.id === id && p.creatorId === state.ownedId,
@@ -719,10 +687,7 @@ export function ProgramEditor({ id }: { id?: string }) {
       workoutIds: ids,
       published,
     };
-    update((s) => ({
-      ...s,
-      programs: [...s.programs.filter((x) => x.id !== next.id), next],
-    }));
+    apply(saveProgram(next));
     go(router, "content", "programs");
   };
   return (
@@ -828,7 +793,7 @@ export function ProgramEditor({ id }: { id?: string }) {
   );
 }
 export function CreatorPrice() {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === state.ownedId)!;
   const [price, setPrice] = useState(c.price ? String(c.price) : "19");
@@ -855,9 +820,8 @@ export function CreatorPrice() {
         <T>Full access to {c.name}’s channel. Cancel renewal anytime.</T>
       </Card>
       <Notice>
-        Demo pricing only. Platform fees, taxes, and payment processing will be
-        configured with the backend. Existing demo memberships retain their
-        starting price.
+        Platform fees and taxes are applied at checkout. Existing memberships
+        keep the price they started on.
       </Notice>
       {!!msg && <Notice error>{msg}</Notice>}
       <Button
@@ -875,12 +839,7 @@ export function CreatorPrice() {
             );
             return;
           }
-          update((s) => ({
-            ...s,
-            creators: s.creators.map((x) =>
-              x.id === c.id ? { ...x, price: n } : x,
-            ),
-          }));
+          apply(setChannelPrice(c.id, n));
           go(router, "studio");
         }}
       />
@@ -888,7 +847,7 @@ export function CreatorPrice() {
   );
 }
 export function CreatorPayout() {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === state.ownedId)!;
   return (
@@ -900,23 +859,16 @@ export function CreatorPayout() {
       <Card>
         <Wallet size={36} color={C.green} />
         <T size={22} bold>
-          {c.payoutReady ? "Demo setup complete" : "Try the payout setup state"}
+          {c.payoutReady ? "Payout setup complete" : "Set up payouts"}
         </T>
         <T color={C.muted}>
           This frontend does not collect bank details or identity documents.
           Payment-provider onboarding comes with the backend.
         </T>
         <Button
-          title={
-            c.payoutReady ? "Back to studio" : "Complete demo payout setup"
-          }
+          title={c.payoutReady ? "Back to studio" : "Complete payout setup"}
           onPress={() => {
-            update((s) => ({
-              ...s,
-              creators: s.creators.map((x) =>
-                x.id === c.id ? { ...x, payoutReady: true } : x,
-              ),
-            }));
+            apply(completePayoutSetup(c.id));
             go(router, "studio");
           }}
         />
@@ -925,7 +877,7 @@ export function CreatorPayout() {
   );
 }
 export function CreatorPublish() {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === state.ownedId)!;
   const checks = publishChecks(state, c);
@@ -972,17 +924,12 @@ export function CreatorPublish() {
         title={c.published ? "View sharing options" : "Publish my channel"}
         disabled={checks.some((x) => !x.ok)}
         onPress={() => {
-          update((s) => ({
-            ...s,
-            creators: s.creators.map((x) =>
-              x.id === c.id ? { ...x, published: true } : x,
-            ),
-          }));
+          apply(setChannelPublished(c.id, true));
           go(router, "creator-share");
         }}
       />
       <T size={12} color={C.muted}>
-        Publishing updates this local demo. Your channel needs the backend
+        Publishing lists your channel in Discover. Sharing needs the backend
         before other devices can access it.
       </T>
     </Shell>
@@ -1030,8 +977,7 @@ export function CreatorShare() {
       </Card>
       {!!err && <Notice error>{err}</Notice>}
       <Notice>
-        This is your planned production link. In this frontend demo, the channel
-        is only available on this device.
+        This is your channel link. It goes live once the backend is connected.
       </Notice>
       <Button
         title="Open member view"
@@ -1052,7 +998,7 @@ export function Members() {
     (m) => m.creatorId === state.ownedId && hasAccess(state, m.creatorId),
   );
   const visible = rows.filter(() =>
-    `${state.user?.name || "Demo member"} ${state.user?.email || ""}`
+    `${state.user?.name || "Member"} ${state.user?.email || ""}`
       .toLowerCase()
       .includes(q.toLowerCase()),
   );
@@ -1060,7 +1006,7 @@ export function Members() {
     <Shell creator>
       <Heading
         title="People showing up with you."
-        description={`${rows.length} active demo member${rows.length === 1 ? "" : "s"}.`}
+        description={`${rows.length} active member${rows.length === 1 ? "" : "s"}.`}
       />
       <Field
         label="Search members"
@@ -1072,7 +1018,7 @@ export function Members() {
         visible.map((m) => (
           <Card key={m.creatorId}>
             <Row between>
-              <T bold>{state.user?.name || "Demo member"}</T>
+              <T bold>{state.user?.name || "Member"}</T>
               <Badge light>{m.renews ? "ACTIVE" : "ENDING"}</Badge>
             </Row>
             <T color={C.muted}>
@@ -1080,7 +1026,7 @@ export function Members() {
             </T>
             <T>${m.price}/month</T>
             <T size={12} color={C.muted}>
-              Local demo member · No message sent
+              Messaging members needs the backend
             </T>
           </Card>
         ))
@@ -1113,10 +1059,10 @@ export function Earnings() {
     <Shell creator>
       <Heading
         title="Your work, adding up."
-        description="A transparent look at your demo memberships."
+        description="A transparent look at your memberships."
       />
       <Card style={{ backgroundColor: C.green, borderWidth: 0 }}>
-        <T color="#BFD0C3">Current monthly gross · Demo</T>
+        <T color="#BFD0C3">Current monthly gross</T>
         <T bold size={48} color={C.white}>
           ${gross.toFixed(2)}
         </T>
@@ -1139,8 +1085,8 @@ export function Earnings() {
         </Row>
       </Card>
       <Notice>
-        No money has been collected. This reflects local demo memberships, not
-        real revenue or a payout balance.
+        Payouts are not connected yet, so this reflects memberships recorded on
+        this device rather than settled revenue or an available balance.
       </Notice>
       <Button
         title={c.payoutReady ? "View payout setup" : "Set up payouts"}
@@ -1151,7 +1097,7 @@ export function Earnings() {
   );
 }
 export function CreatorSettings() {
-  const { state, update } = useStore();
+  const { state, apply } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === state.ownedId)!;
   const [confirm, setConfirm] = useState(false);
@@ -1181,18 +1127,13 @@ export function CreatorSettings() {
           <Card>
             <T bold>Unpublish your channel?</T>
             <T>
-              Your channel will disappear from Discover. Existing demo members
-              retain workout access for their current period.
+              Your channel will disappear from Discover. Existing members keep
+              workout access for their current period.
             </T>
             <Button
               title="Confirm unpublish"
               onPress={() => {
-                update((s) => ({
-                  ...s,
-                  creators: s.creators.map((x) =>
-                    x.id === c.id ? { ...x, published: false } : x,
-                  ),
-                }));
+                apply(setChannelPublished(c.id, false));
                 setConfirm(false);
               }}
             />

@@ -34,6 +34,12 @@ const bundledPhotos: Record<string, number> = {
   [photos.pilates]: require("../assets/photos/pilates.jpg"),
   [photos.workout]: require("../assets/photos/workout.jpg"),
 };
+/**
+ * Palette. Every text colour here clears WCAG AA (4.5:1) for normal text on
+ * the surfaces it is used on — bg, white and sage. `muted` is the tight one:
+ * it carries captions at 11-13px, which count as normal text, so it cannot be
+ * lightened without failing contrast.
+ */
 export const C = {
   bg: "#F7F8F5",
   white: "#FFFFFF",
@@ -41,7 +47,7 @@ export const C = {
   green: "#173F32",
   sage: "#E9EFE7",
   lime: "#DCF58C",
-  muted: "#728077",
+  muted: "#626E66",
   line: "#E2E7DF",
   red: "#A34232",
 };
@@ -60,16 +66,22 @@ export function T({
   bold = false,
   color = C.ink,
   style,
+  accessibilityRole,
+  numberOfLines,
 }: {
   children: React.ReactNode;
   size?: number;
   bold?: boolean;
   color?: string;
   style?: TextStyle;
+  accessibilityRole?: "header" | "text" | "link";
+  numberOfLines?: number;
 }) {
   return (
     <Text
       selectable
+      accessibilityRole={accessibilityRole}
+      numberOfLines={numberOfLines}
       style={[
         {
           fontSize: size,
@@ -195,7 +207,12 @@ export function Button({
       })}
     >
       {loading ? <ActivityIndicator color={C.white} /> : icon}
-      <T size={14} bold color={secondary || subtle ? C.ink : C.white}>
+      <T
+        size={14}
+        bold
+        color={secondary || subtle ? C.ink : C.white}
+        numberOfLines={1}
+      >
         {title}
       </T>
     </Pressable>
@@ -227,6 +244,8 @@ export function Field({
       </T>
       <TextInput
         accessibilityLabel={label}
+        accessibilityHint={error}
+        aria-invalid={!!error}
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
@@ -248,9 +267,11 @@ export function Field({
         }}
       />
       {!!error && (
-        <T size={12} color={C.red}>
-          {error}
-        </T>
+        <View accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <T size={12} color={C.red}>
+            {error}
+          </T>
+        </View>
       )}
     </View>
   );
@@ -279,6 +300,8 @@ export function Chips({
           style={{
             paddingHorizontal: 18,
             paddingVertical: 11,
+            minHeight: 44,
+            justifyContent: "center",
             borderRadius: 24,
             backgroundColor: value === x ? C.green : C.sage,
           }}
@@ -331,7 +354,12 @@ export function Heading({
         </T>
       )}
       <Row between>
-        <T size={30} bold style={{ letterSpacing: -1, flex: 1 }}>
+        <T
+          size={30}
+          bold
+          accessibilityRole="header"
+          style={{ letterSpacing: -1, flex: 1 }}
+        >
           {title}
         </T>
         {action}
@@ -349,6 +377,8 @@ export function Notice({
 }) {
   return (
     <View
+      accessibilityRole={error ? "alert" : undefined}
+      accessibilityLiveRegion={error ? "polite" : "none"}
       style={{
         backgroundColor: error ? "#F9EAE5" : C.sage,
         borderRadius: 12,
@@ -574,7 +604,7 @@ export function Shell({
       {desktop && (
         <View
           style={{
-            width: 235,
+            width: 264,
             borderRightWidth: 1,
             borderColor: C.line,
             padding: 25,
@@ -608,7 +638,12 @@ export function Shell({
           {nav(true)}
           <View style={{ marginTop: "auto", gap: 12 }}>
             <Card
-              style={{ backgroundColor: C.sage, borderWidth: 0, padding: 15 }}
+              style={{
+                backgroundColor: C.sage,
+                borderWidth: 0,
+                padding: 16,
+                gap: 10,
+              }}
             >
               <T bold size={13}>
                 {creator
@@ -629,7 +664,7 @@ export function Shell({
               />
             </Card>
             <T size={11} color={C.muted}>
-              LOCAL DEMO · No real payments
+              © {new Date().getFullYear()} TrainWith
             </T>
           </View>
         </View>
@@ -658,7 +693,8 @@ export function Shell({
                     ? router.back()
                     : go(router, creator ? "studio" : "discover")
                 }
-                style={{ padding: 7 }}
+                // 21px icon plus 12px padding keeps the tap target at 45.
+                style={{ padding: 12, marginLeft: -12 }}
               >
                 <ArrowLeft color={C.ink} size={21} />
               </Pressable>
@@ -673,7 +709,6 @@ export function Shell({
             </T>
           </Row>
           <Row>
-            <Badge light>DEMO</Badge>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={creator ? "Creator settings" : "Your profile"}
@@ -681,15 +716,24 @@ export function Shell({
                 go(router, creator ? "creator-settings" : "profile")
               }
               style={{
-                width: 34,
-                height: 34,
-                borderRadius: 17,
-                backgroundColor: C.green,
+                width: 44,
+                height: 44,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <UserRound color={C.white} size={17} />
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: C.green,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <UserRound color={C.white} size={17} />
+              </View>
             </Pressable>
           </Row>
         </View>

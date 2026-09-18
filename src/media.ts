@@ -11,7 +11,7 @@ export async function pickVideo(): Promise<{
   if (result.canceled) return null;
   const asset = result.assets[0];
   if ((asset.size || 0) > 100 * 1024 * 1024)
-    throw new Error("Choose a video smaller than 100 MB for this local demo.");
+    throw new Error("Choose a video smaller than 100 MB.");
   const source = new File(asset.uri);
   const dest = new File(
     Paths.document,

@@ -36,7 +36,7 @@ const screens: Record<string, React.ComponentType<ScreenProps>> = {
   "manage-membership": Consumer.ManageMembership,
   "edit-profile": Consumer.EditProfile,
   support: Consumer.Support,
-  "demo-settings": Consumer.DemoSettings,
+  settings: Consumer.AppSettings,
   "creator-start": Creator.CreatorStart,
   "creator-handle": Creator.CreatorHandle,
 };
