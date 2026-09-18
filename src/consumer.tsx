@@ -23,7 +23,7 @@ import {
   toggleSavedProgram,
   addSupportRequest,
 } from "./services";
-import { Workout, hasAccess } from "./data";
+import { Workout, hasAccess, EMAIL } from "./data";
 import {
   Shell,
   T,
@@ -559,11 +559,18 @@ export function Auth({ id }: { id?: string }) {
   const router = useRouter();
   const [name, setName] = useState(state.user?.name || "");
   const [email, setEmail] = useState(state.user?.email || "");
-  const [err, setErr] = useState("");
+  const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
   const enter = (demo = false) => {
-    if (!demo && (!name.trim() || !/^\S+@\S+\.\S+$/.test(email))) {
-      setErr("Add your name and a valid email address.");
-      return;
+    if (!demo) {
+      // Point at the field that is wrong rather than one combined message.
+      const next = {
+        name: name.trim() ? undefined : "Enter your name.",
+        email: EMAIL.test(email.trim())
+          ? undefined
+          : "Enter a valid email address.",
+      };
+      setErrors(next);
+      if (next.name || next.email) return;
     }
     apply(
       signIn(
@@ -591,6 +598,7 @@ export function Auth({ id }: { id?: string }) {
         value={name}
         onChange={setName}
         placeholder="Sam Taylor"
+        error={errors.name}
       />
       <Field
         label="Email address"
@@ -598,8 +606,8 @@ export function Auth({ id }: { id?: string }) {
         onChange={setEmail}
         placeholder="sam@example.com"
         keyboardType="email-address"
+        error={errors.email}
       />
-      {!!err && <Notice error>{err}</Notice>}
       <Button title="Continue with these details" onPress={() => enter()} />
       <Button
         title="Use a sample profile"
@@ -1079,7 +1087,7 @@ export function EditProfile() {
       <Button
         title="Save profile"
         onPress={() => {
-          if (!name.trim() || !/^\S+@\S+\.\S+$/.test(email)) {
+          if (!name.trim() || !EMAIL.test(email.trim())) {
             setMsg("Enter your name and a valid email address.");
             return;
           }

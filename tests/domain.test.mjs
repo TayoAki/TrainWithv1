@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { seed, hasAccess, handleError, publishChecks } from "../src/data.ts";
+import {
+  seed,
+  hasAccess,
+  handleError,
+  publishChecks,
+  EMAIL,
+} from "../src/data.ts";
 import {
   startMembership,
   setRenewal,
@@ -145,4 +151,22 @@ test("the local payment gateway resolves both outcomes without charging", async 
   });
   assert.equal(failed.ok, false);
   assert.equal(failed.reason, PAYMENT_FAILURE_MESSAGE);
+});
+
+test("the email check catches typos without rejecting valid addresses", () => {
+  for (const good of [
+    "sam@example.com",
+    "sam.taylor+gym@sub.example.co.uk",
+    "s@e.io",
+  ])
+    assert.equal(EMAIL.test(good), true, `${good} should be accepted`);
+  for (const bad of [
+    "",
+    "sam",
+    "sam@",
+    "@example.com",
+    "sam@example",
+    "a b@c.com",
+  ])
+    assert.equal(EMAIL.test(bad), false, `${bad} should be rejected`);
 });

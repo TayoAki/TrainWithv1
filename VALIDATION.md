@@ -7,11 +7,12 @@
 - Expo Doctor: 19/21 project checks. See "Environment-limited checks" below.
 - Production Expo web export.
 - iOS and Android JavaScript/Hermes exports (compilation, not installed native builds).
-- Nine domain tests covering the pure transitions in `src/services.ts`:
+- Ten domain tests covering the pure transitions in `src/services.ts`:
   creator-scoped membership access and expiry, handle availability and reserved
   names, channel publication requirements, one-month membership periods and
   replacement, cancel-keeps-access, first-completion-wins and clearing,
-  handle claim then rename, workout upsert, and both payment gateway outcomes.
+  handle claim then rename, workout upsert, both payment gateway outcomes, and
+  the shared email check against valid and malformed addresses.
 - Twelve JSDOM interaction groups against the production Expo web bundle:
   1. Application mount and discovery.
   2. Search, channel navigation, program detail and saving.
@@ -93,6 +94,8 @@ Measured on the rendered page, not asserted from source:
 - Form errors. Field errors are announced through `accessibilityHint` plus an
   `alert` live region, and the input carries `aria-invalid`. The accessible name
   stays the bare label.
+- Responsive layout. No horizontal overflow at 390px on discovery, the public
+  channel or the checkout (`scrollWidth` equals `clientWidth` on each).
 
 Not covered: a screen reader was not run (VoiceOver/TalkBack), and reduced
 motion, text scaling and high-contrast modes were not exercised.

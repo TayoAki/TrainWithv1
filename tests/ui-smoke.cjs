@@ -246,7 +246,7 @@ const pass = (name) => {
         },
         null,
         2,
-      ),
+      ) + "\n",
     );
     console.log(`${passed.length} interaction groups passed.`);
   } catch (e) {

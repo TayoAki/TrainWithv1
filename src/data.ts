@@ -161,6 +161,8 @@ export function seed(): AppState {
     ownedId: null,
   };
 }
+/** Deliberately permissive: catches typos without rejecting valid addresses. */
+export const EMAIL = /^\S+@\S+\.\S+$/;
 export const uid = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 export function hasAccess(state: AppState, creatorId: string) {
