@@ -3,6 +3,7 @@ import Mux from "@mux/mux-node";
 import type { Config } from "./config.js";
 import { ApiError, requireFeature } from "./errors.js";
 import type { Row } from "./db.js";
+import { createClient } from "@supabase/supabase-js";
 
 export const record = (v: unknown): Row =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Row) : {};
@@ -28,6 +29,7 @@ export type CheckoutInput = {
   expires: number;
   fee: number;
   appUrl: string;
+  nativeReturn?: boolean;
 };
 export interface Providers {
   verifyStripe(raw: string, signature: string): ProviderEvent;
@@ -59,6 +61,20 @@ export interface Providers {
   ): Promise<{ id: string; url: string }>;
   asset(id: string): Promise<Row>;
   playback(id: string, seconds: number): Promise<string>;
+  confirmPassword(
+    email: string,
+    password: string,
+    userId: string,
+  ): Promise<void>;
+  deleteAuthUser(id: string): Promise<void>;
+  closeCheckout(input: CheckoutInput, sessionId?: string): Promise<void>;
+  cancelSubscriptions(customer: string, creatorId?: string): Promise<void>;
+  deleteCustomer(id: string): Promise<void>;
+  deleteMedia(
+    workoutIds: string[],
+    uploads: string[],
+    assets: string[],
+  ): Promise<void>;
 }
 export function createProviders(c: Config): Providers {
   const stripe = c.STRIPE_SECRET_KEY
@@ -139,8 +155,8 @@ export function createProviders(c: Config): Providers {
           mode: "subscription",
           customer: i.customer,
           client_reference_id: i.userId,
-          success_url: `${i.appUrl}/screen/joined?id=${encodeURIComponent(i.creatorId)}`,
-          cancel_url: `${i.appUrl}/screen/membership?id=${encodeURIComponent(i.creatorId)}`,
+          success_url: `${i.appUrl}/screen/checkout-return?id=${encodeURIComponent(i.creatorId)}`,
+          cancel_url: `${i.appUrl}/screen/checkout-canceled?id=${encodeURIComponent(i.creatorId)}`,
           line_items: [
             {
               quantity: 1,
@@ -281,6 +297,105 @@ export function createProviders(c: Config): Providers {
         expiration: `${Math.ceil(seconds)}s`,
       });
       return `https://stream.mux.com/${encodeURIComponent(id)}.m3u8?token=${encodeURIComponent(token)}`;
+    },
+    async confirmPassword(email, password, userId) {
+      const auth = createClient(c.SUPABASE_URL, c.SUPABASE_PUBLISHABLE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data, error } = await auth.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error || data.user?.id !== userId)
+        throw new ApiError(
+          401,
+          "REAUTHENTICATION_FAILED",
+          "Confirm your current password before deleting your account.",
+        );
+      await auth.auth.signOut({ scope: "local" });
+    },
+    async deleteAuthUser(id) {
+      requireFeature(c.SUPABASE_SERVICE_ROLE_KEY, "Account deletion");
+      const auth = createClient(c.SUPABASE_URL, c.SUPABASE_SERVICE_ROLE_KEY!, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { error } = await auth.auth.admin.deleteUser(id);
+      if (error && error.status !== 404) throw error;
+    },
+    async closeCheckout(input, sessionId) {
+      // Resolve a lost response with the original durable idempotency key.
+      if (!sessionId && input.expires < Math.floor(Date.now() / 1000)) return;
+      const id = sessionId || (await this.checkout(input)).id;
+      try {
+        const session = await s().checkout.sessions.retrieve(id);
+        if (session.status === "open") await s().checkout.sessions.expire(id);
+      } catch (error) {
+        if ((error as { code?: string }).code !== "resource_missing")
+          throw error;
+      }
+    },
+    async cancelSubscriptions(customer, creatorId) {
+      try {
+        for await (const sub of s().subscriptions.list({
+          customer,
+          status: "all",
+          limit: 100,
+        })) {
+          if (creatorId && sub.metadata.trainwith_creator_id !== creatorId)
+            continue;
+          if (!["canceled", "incomplete_expired"].includes(sub.status))
+            await s().subscriptions.cancel(sub.id, {
+              invoice_now: false,
+              prorate: false,
+            });
+        }
+      } catch (error) {
+        if ((error as { code?: string }).code !== "resource_missing")
+          throw error;
+      }
+    },
+    async deleteCustomer(id) {
+      try {
+        await s().customers.del(id);
+      } catch (error) {
+        if ((error as { code?: string }).code !== "resource_missing")
+          throw error;
+      }
+    },
+    async deleteMedia(workoutIds, uploads, assets) {
+      if (!workoutIds.length && !uploads.length && !assets.length) return;
+      const ids = new Set(assets);
+      const ignoreMissing = async (fn: () => Promise<unknown>) => {
+        try {
+          return await fn();
+        } catch (e) {
+          if ((e as { status?: number }).status !== 404) throw e;
+        }
+      };
+      for (const id of uploads) {
+        const upload = await ignoreMissing(() =>
+          m().video.uploads.retrieve(id),
+        );
+        if (upload && typeof upload === "object") {
+          const u = record(upload);
+          if (u.asset_id) ids.add(String(u.asset_id));
+          else if (u.status === "waiting") {
+            try {
+              await m().video.uploads.cancel(id);
+            } catch (e) {
+              const latest = await m().video.uploads.retrieve(id);
+              if (latest.asset_id) ids.add(latest.asset_id);
+              else if (latest.status !== "cancelled") throw e;
+            }
+          }
+        }
+      }
+      // Include replaced assets, which older upload mappings did not retain.
+      for await (const asset of m().video.assets.list({ limit: 100 }))
+        if (asset.passthrough && workoutIds.includes(asset.passthrough))
+          ids.add(asset.id);
+      for (const id of ids)
+        await ignoreMissing(() => m().video.assets.delete(id));
     },
   };
 }

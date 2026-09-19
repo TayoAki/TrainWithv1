@@ -5,6 +5,7 @@ RUN npm ci
 COPY app.json tsconfig.json ./
 COPY app ./app
 COPY src ./src
+COPY modules ./modules
 COPY assets ./assets
 ARG EXPO_PUBLIC_API_URL
 ARG EXPO_PUBLIC_WEB_URL

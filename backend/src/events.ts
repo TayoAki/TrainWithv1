@@ -39,6 +39,14 @@ async function syncSubscriptionLocked(
   const userId = String(metadata.trainwith_user_id || "");
   const creatorId = String(metadata.trainwith_creator_id || "");
   if (!userId || !creatorId) return; // Other products in the same Stripe account.
+  if (
+    await one(
+      db,
+      "select 1 from trainwith_private.erased_subjects where (kind='user' and subject_id=$1) or (kind='creator' and subject_id=$2)",
+      [userId, creatorId],
+    )
+  )
+    return;
   const mapping = await one(
     db,
     `select 1 from trainwith_private.customers where user_id=$1 and stripe_customer_id=$2`,
@@ -270,7 +278,19 @@ async function muxEvent(db: DB, p: Providers, e: ProviderEvent) {
     "select * from trainwith_private.video_assets where workout_id=$1",
     [workoutId],
   );
-  if (!video) throw new Error("Upload mapping is not available");
+  if (!video) {
+    if (
+      await one(
+        db,
+        "select 1 from trainwith_private.erased_subjects where kind='workout' and subject_id=$1",
+        [workoutId],
+      )
+    ) {
+      await p.deleteMedia([workoutId], [], [String(asset.id)]);
+      return;
+    }
+    throw new Error("Upload mapping is not available");
+  }
   // Ignore notifications for a video replaced by a later upload.
   if (asset.upload_id && video.upload_id !== asset.upload_id) return;
   if (!asset.upload_id && video.asset_id !== asset.id) return;

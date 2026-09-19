@@ -1,6 +1,12 @@
-import { demoMode } from "./backend";
+import { demoMode, appWebUrl } from "./backend";
 import { ConnectedAuth } from "./connected-auth";
-import { ConnectedMembership, ConnectedJoined } from "./connected-commerce";
+import {
+  ConnectedMembership,
+  ConnectedJoined,
+  MembershipAction,
+  useCheckoutEligibility,
+} from "./connected-commerce";
+import { SafetyActions, SafetySettings, PolicyLinks } from "./connected-safety";
 import React, { useState } from "react";
 import { View, Pressable, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
@@ -244,13 +250,11 @@ export function Channel({
           secondary
           onPress={async () => {
             try {
-              await Clipboard.setStringAsync(
-                `https://jointrainwith.com/${c.handle}`,
-              );
+              await Clipboard.setStringAsync(`${appWebUrl}/${c.handle}`);
               setCopied(true);
             } catch {
               setShareError(
-                `Copy is unavailable. Your planned channel link is https://jointrainwith.com/${c.handle}`,
+                `Copy is unavailable. Your channel link is ${appWebUrl}/${c.handle}`,
               );
             }
           }}
@@ -316,23 +320,35 @@ export function Channel({
           </T>
           <T>{c.bio}</T>
           <Badge light>{c.category}</Badge>
-          <T size={12} color={C.muted}>
-            Sample coach profile
-          </T>
+          {demoMode && (
+            <T size={12} color={C.muted}>
+              Sample coach profile
+            </T>
+          )}
         </Card>
       )}
+      {!demoMode && !preview && <SafetyActions creatorId={c.id} />}
       {!preview && (
         <>
-          <Button
-            title={
-              active
-                ? "Go to my workouts"
-                : `Join ${c.name.split(" ")[0]} · $${c.price}/month`
-            }
-            onPress={() =>
-              go(router, active ? "my-workouts" : "membership", c.id)
-            }
-          />
+          {!demoMode ? (
+            <MembershipAction
+              creatorId={c.id}
+              name={c.name}
+              price={c.price}
+              active={active}
+            />
+          ) : (
+            <Button
+              title={
+                active
+                  ? "Go to my workouts"
+                  : `Join ${c.name.split(" ")[0]} · $${c.price}/month`
+              }
+              onPress={() =>
+                go(router, active ? "my-workouts" : "membership", c.id)
+              }
+            />
+          )}
           <T size={11} color={C.muted} style={{ textAlign: "center" }}>
             Membership applies to this channel. Cancel renewal anytime.
           </T>
@@ -399,12 +415,20 @@ export function ProgramScreen({ id }: { id?: string }) {
         secondary
         onPress={async () => await apply(toggleSavedProgram(p.id))}
       />
-      {!hasAccess(state, c.id) && (
-        <Button
-          title={`See membership · $${c.price}/month`}
-          onPress={() => go(router, "membership", c.id)}
-        />
-      )}
+      {!hasAccess(state, c.id) &&
+        (!demoMode ? (
+          <MembershipAction
+            creatorId={c.id}
+            name={c.name}
+            price={c.price}
+            active={false}
+          />
+        ) : (
+          <Button
+            title={`See membership · $${c.price}/month`}
+            onPress={() => go(router, "membership", c.id)}
+          />
+        ))}
     </Shell>
   );
 }
@@ -422,7 +446,8 @@ export function WorkoutScreen({ id }: { id?: string }) {
       </Shell>
     );
   const c = state.creators.find((c) => c.id === w.creatorId)!;
-  const allowed = w.free || hasAccess(state, c.id);
+  const allowed =
+    (w.free || hasAccess(state, c.id)) && (demoMode || !!state.user);
   return (
     <Shell back title={w.title}>
       {allowed ? (
@@ -479,11 +504,36 @@ export function WorkoutScreen({ id }: { id?: string }) {
               go(router, "complete", w.id);
             }}
           />
-          {w.free && !hasAccess(state, c.id) && (
+          {w.free &&
+            !hasAccess(state, c.id) &&
+            (!demoMode ? (
+              <MembershipAction
+                creatorId={c.id}
+                name={c.name}
+                price={c.price}
+                active={false}
+              />
+            ) : (
+              <Button
+                title="Explore the membership"
+                secondary
+                onPress={() => go(router, "membership", c.id)}
+              />
+            ))}
+        </>
+      ) : !demoMode ? (
+        <>
+          {!state.user ? (
             <Button
-              title="Explore the membership"
-              secondary
-              onPress={() => go(router, "membership", c.id)}
+              title="Sign in to train"
+              onPress={() => go(router, "auth")}
+            />
+          ) : (
+            <MembershipAction
+              creatorId={c.id}
+              name={c.name}
+              price={c.price}
+              active={false}
             />
           )}
         </>
@@ -499,6 +549,7 @@ export function WorkoutScreen({ id }: { id?: string }) {
           />
         </>
       )}
+      {!demoMode && <SafetyActions creatorId={c.id} workoutId={w.id} />}
     </Shell>
   );
 }
@@ -921,6 +972,7 @@ export function Profile() {
           </View>
         </Row>
       </Card>
+      {!demoMode && <PolicyLinks />}
       <View>
         <Item
           title="My memberships"
@@ -974,7 +1026,13 @@ export function Memberships() {
       <Heading title="Your coaches, in one place." />
       {state.memberships.length ? (
         state.memberships.map((m) => {
-          const c = state.creators.find((c) => c.id === m.creatorId)!;
+          const c = state.creators.find((c) => c.id === m.creatorId) ||
+            state.blocked?.find((c) => c.id === m.creatorId) || {
+              id: m.creatorId,
+              name: "Unavailable creator",
+              handle: "",
+              price: m.price,
+            };
           return (
             <Card key={m.creatorId}>
               <Row between>
@@ -1020,8 +1078,24 @@ export function ManageMembership({ id }: { id?: string }) {
   const { state, apply } = useStore();
   const router = useRouter();
   const [confirm, setConfirm] = useState(false);
+  const purchaseAllowed = useCheckoutEligibility();
+  const renewalAllowed =
+    demoMode ||
+    (purchaseAllowed &&
+      state.eligibility?.accepted &&
+      state.eligibility.status === "active");
   const m = state.memberships.find((m) => m.creatorId === id);
-  const c = state.creators.find((c) => c.id === id);
+  const c =
+    state.creators.find((c) => c.id === id) ||
+    state.blocked?.find((c) => c.id === id) ||
+    (m
+      ? {
+          id: m.creatorId,
+          name: "Unavailable creator",
+          handle: "",
+          price: m.price,
+        }
+      : undefined);
   if (!m || !c)
     return (
       <Shell back>
@@ -1043,11 +1117,22 @@ export function ManageMembership({ id }: { id?: string }) {
           : "Your renewal is canceled. You can keep training until"}{" "}
         {new Date(m.ends).toLocaleDateString()}.
       </Notice>
-      {!hasAccess(state, c.id) ? (
-        <Button
-          title="Rejoin this channel"
-          onPress={() => go(router, "membership", c.id)}
-        />
+      {!m.renews && !hasAccess(state, c.id) ? (
+        demoMode ? (
+          <Button
+            title="Rejoin this channel"
+            onPress={() => go(router, "membership", c.id)}
+          />
+        ) : (
+          <MembershipAction
+            creatorId={c.id}
+            name={c.name}
+            price={m.price}
+            active={false}
+          />
+        )
+      ) : !m.renews && !renewalAllowed ? (
+        <Notice>Renewal is canceled.</Notice>
       ) : confirm ? (
         <Card>
           <T bold size={22}>
@@ -1132,7 +1217,7 @@ export function Support() {
         <T bold>How do memberships work?</T>
         <T color={C.muted}>
           Each membership unlocks one creator’s published workouts and programs.
-          Free samples are open to everyone.
+          Free samples are available to signed-in adults without a membership.
         </T>
         <T bold>Where is my progress?</T>
         <T color={C.muted}>
@@ -1178,23 +1263,7 @@ export function Support() {
   );
 }
 export function AppSettings() {
-  return demoMode ? <DemoAppSettings /> : <ConnectedSettings />;
-}
-function ConnectedSettings() {
-  const { refresh } = useStore();
-  return (
-    <Shell back title="Settings">
-      <Heading
-        title="Your TrainWith account"
-        description="Your profile and training records are stored securely in TrainWith."
-      />
-      <Notice>
-        For account deletion or a data export, submit a support request. This
-        beta uses manual review.
-      </Notice>
-      <Button title="Refresh account data" onPress={() => void refresh()} />
-    </Shell>
-  );
+  return demoMode ? <DemoAppSettings /> : <SafetySettings />;
 }
 function DemoAppSettings() {
   const { reset } = useStore();

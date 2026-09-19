@@ -3,10 +3,24 @@ import { one } from "./db.js";
 import type { Identity } from "./auth.js";
 import { ApiError } from "./errors.js";
 import { z } from "zod";
+import { POLICY_VERSION, requireAdult } from "./safety.js";
 
 const active = `s.paid_until>now() and s.revoked_invoice_id is null`;
-export const visible = `(c.owner_id=$1::uuid or (c.approved and (c.published or exists(select 1 from trainwith_private.subscriptions s where s.creator_id=c.id and s.user_id=$1::uuid and ${active}))))`;
+const safety = `exists(select 1 from trainwith.profiles owner where owner.id=c.owner_id and owner.account_status='active') and not exists(select 1 from trainwith_private.blocks b where b.user_id=$1::uuid and b.creator_id=c.id)`;
+export const visible = `${safety} and (c.owner_id=$1::uuid or (c.approved and (c.published or exists(select 1 from trainwith_private.subscriptions s where s.creator_id=c.id and s.user_id=$1::uuid and ${active}))))`;
 export async function ensureProfile(db: DB, u: Identity) {
+  if (
+    await one(
+      db,
+      "select 1 from trainwith_private.erased_subjects where kind='user' and subject_id=$1",
+      [u.id],
+    )
+  )
+    throw new ApiError(
+      403,
+      "ACCOUNT_DELETED",
+      "This account has been deleted.",
+    );
   await db.query(
     "insert into trainwith.profiles(id,name) values($1,$2) on conflict(id) do nothing",
     [u.id, u.name],
@@ -26,12 +40,19 @@ export async function canPlay(
   workoutId: string,
   userId: string | null,
 ) {
+  if (!userId)
+    throw new ApiError(
+      401,
+      "UNAUTHENTICATED",
+      "Sign in and confirm you are 18 or older to play workouts.",
+    );
+  await requireAdult(db, { id: userId, email: "", name: "" });
   const row = await one(
     db,
     `select w.*,c.owner_id,c.approved,c.published as channel_published,
     a.playback_id,a.status as video_status,a.duration_seconds from trainwith.workouts w
     join trainwith.creators c on c.id=w.creator_id left join trainwith_private.video_assets a on a.workout_id=w.id
-    where w.id=$1 and (c.owner_id=$2::uuid or (c.approved and w.published and
+    where w.id=$1 and exists(select 1 from trainwith.profiles owner where owner.id=c.owner_id and owner.account_status='active') and not exists(select 1 from trainwith_private.blocks b where b.user_id=$2::uuid and b.creator_id=c.id) and (c.owner_id=$2::uuid or (c.approved and w.published and w.moderation_status='approved' and
     ((w.free and c.published) or exists(select 1 from trainwith_private.subscriptions s where s.creator_id=c.id and s.user_id=$2::uuid and ${active}))))`,
     [workoutId, userId],
   );
@@ -57,14 +78,14 @@ export async function readState(db: DB, u: Identity | null) {
     await db.query(
       `select w.*,a.status as video_status from trainwith.workouts w join trainwith.creators c on c.id=w.creator_id
     left join trainwith_private.video_assets a on a.workout_id=w.id
-    where ${visible} and (w.published or c.owner_id=$1::uuid) order by w.created_at desc limit 3000`,
+    where ${visible} and ((w.published and w.moderation_status='approved') or c.owner_id=$1::uuid) order by w.created_at desc limit 3000`,
       [uid],
     )
   ).rows;
   const programs = (
     await db.query(
-      `select p.*,coalesce((select json_agg(pw.workout_id order by pw.position) from trainwith.program_workouts pw join trainwith.workouts w on w.id=pw.workout_id where pw.program_id=p.id and (w.published or c.owner_id=$1::uuid)),'[]') as workout_ids
-    from trainwith.programs p join trainwith.creators c on c.id=p.creator_id where ${visible} and (p.published or c.owner_id=$1::uuid) limit 1000`,
+      `select p.*,coalesce((select json_agg(pw.workout_id order by pw.position) from trainwith.program_workouts pw join trainwith.workouts w on w.id=pw.workout_id where pw.program_id=p.id and ((w.published and w.moderation_status='approved') or c.owner_id=$1::uuid)),'[]') as workout_ids
+    from trainwith.programs p join trainwith.creators c on c.id=p.creator_id where ${visible} and ((p.published and p.moderation_status='approved') or c.owner_id=$1::uuid) limit 1000`,
       [uid],
     )
   ).rows;
@@ -101,11 +122,26 @@ export async function readState(db: DB, u: Identity | null) {
       ).rows
     : [];
   const profile = uid
-    ? await one(db, "select name from trainwith.profiles where id=$1", [uid])
+    ? await one(db, "select * from trainwith.profiles where id=$1", [uid])
     : undefined;
   const iso = (v: unknown) => new Date(String(v)).toISOString();
   return {
     version: 1,
+    eligibility: {
+      accepted:
+        !!profile?.adult_confirmed_at &&
+        profile?.policy_version === POLICY_VERSION,
+      status: profile?.account_status || "active",
+      policyVersion: POLICY_VERSION,
+    },
+    blocked: uid
+      ? (
+          await db.query(
+            "select b.creator_id as id,c.name,c.handle,c.price_cents/100.0 as price from trainwith_private.blocks b join trainwith.creators c on c.id=b.creator_id where b.user_id=$1",
+            [uid],
+          )
+        ).rows
+      : [],
     user: u
       ? { id: u.id, name: profile?.name || u.name, email: u.email }
       : null,
@@ -134,6 +170,7 @@ export async function readState(db: DB, u: Identity | null) {
       free: w.free,
       published: w.published,
       photo: w.photo,
+      moderationStatus: w.moderation_status,
       video: w.video_status === "ready" ? `trainwith:workout:${w.id}` : "",
     })),
     programs: programs.map((p) => ({
@@ -144,6 +181,7 @@ export async function readState(db: DB, u: Identity | null) {
       weeks: p.weeks,
       published: p.published,
       workoutIds: p.workout_ids,
+      moderationStatus: p.moderation_status,
     })),
     memberships: memberships
       .filter(
@@ -284,6 +322,10 @@ export async function runCommand(
     throw new ApiError(400, "INVALID_COMMAND", "Unsupported operation.");
   const p = commands[name as keyof typeof commands].parse(payload) as Row;
   await db.transaction(async (tx) => {
+    await tx.query("select pg_advisory_xact_lock(hashtext($1))", [
+      `account:${u.id}`,
+    ]);
+    await requireAdult(tx, u);
     if (p.creatorId) await owned(tx, u, String(p.creatorId));
     switch (name) {
       case "profile.update":
@@ -307,7 +349,7 @@ export async function runCommand(
         break;
       case "creator.profile":
         await tx.query(
-          "update trainwith.creators set name=$1,tagline=$2,bio=$3,category=$4,photo=$5 where id=$6 and owner_id=$7",
+          "update trainwith.creators set name=$1,tagline=$2,bio=$3,category=$4,photo=$5,approved=false,published=false where id=$6 and owner_id=$7",
           [p.name, p.tagline, p.bio, p.category, p.photo, p.creatorId, u.id],
         );
         break;
@@ -359,7 +401,7 @@ export async function runCommand(
       case "workout.save": {
         const existing = await one(
           tx,
-          "select creator_id from trainwith.workouts where id=$1",
+          "select * from trainwith.workouts where id=$1",
           [p.id],
         );
         if (existing && existing.creator_id !== p.creatorId)
@@ -367,6 +409,31 @@ export async function runCommand(
             403,
             "FORBIDDEN",
             "Workout belongs to another channel.",
+          );
+        const changed =
+          !!existing &&
+          [
+            "title",
+            "description",
+            "photo",
+            "free",
+            "equipment",
+            "level",
+            "minutes",
+          ].some((key) => existing[key] !== p[key]);
+        if (
+          p.published &&
+          (existing?.moderation_status !== "approved" || changed)
+        )
+          throw new ApiError(
+            409,
+            "MODERATION_REQUIRED",
+            "Save this workout as a draft for content review before publishing.",
+          );
+        if (changed)
+          await tx.query(
+            "update trainwith.workouts set moderation_status='pending',published=false where id=$1",
+            [p.id],
           );
         if (
           p.published &&
@@ -402,7 +469,7 @@ export async function runCommand(
       case "program.save": {
         const existing = await one(
           tx,
-          "select creator_id from trainwith.programs where id=$1",
+          "select * from trainwith.programs where id=$1",
           [p.id],
         );
         if (existing && existing.creator_id !== p.creatorId)
@@ -410,6 +477,25 @@ export async function runCommand(
             403,
             "FORBIDDEN",
             "Program belongs to another channel.",
+          );
+        const changed =
+          !!existing &&
+          ["title", "description", "weeks"].some(
+            (key) => existing[key] !== p[key],
+          );
+        if (
+          p.published &&
+          (existing?.moderation_status !== "approved" || changed)
+        )
+          throw new ApiError(
+            409,
+            "MODERATION_REQUIRED",
+            "Save this program as a draft for content review before publishing.",
+          );
+        if (changed)
+          await tx.query(
+            "update trainwith.programs set moderation_status='pending',published=false where id=$1",
+            [p.id],
           );
         const ids = p.workoutIds as string[];
         const valid = (
@@ -459,7 +545,7 @@ export async function runCommand(
       case "program.saveToggle": {
         const available = await one(
           tx,
-          `select p.id from trainwith.programs p join trainwith.creators c on c.id=p.creator_id where ${visible} and p.id=$2 and (p.published or c.owner_id=$1::uuid)`,
+          `select p.id from trainwith.programs p join trainwith.creators c on c.id=p.creator_id where ${visible} and p.id=$2 and ((p.published and p.moderation_status='approved') or c.owner_id=$1::uuid)`,
           [u.id, p.programId],
         );
         if (!available)

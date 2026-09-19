@@ -616,6 +616,14 @@ export function WorkoutEditor({ id }: { id?: string }) {
   };
   return (
     <Shell creator back title="Workout details">
+      {!demoMode && (
+        <Notice>
+          Content review: {w.moderationStatus || "pending"}. Save new or changed
+          content as a draft. After TrainWith approves it, publish it here.
+          Changes to the title, description, access or cover require another
+          review.
+        </Notice>
+      )}
       <Photo uri={w.photo} height={170} />
       <Field label="Workout title" value={title} onChange={setTitle} />
       <Field
@@ -758,6 +766,12 @@ export function ProgramEditor({ id }: { id?: string }) {
         title="A little structure goes a long way."
         description="Arrange a sequence of sessions your members can repeat each week."
       />
+      {!demoMode && (
+        <Notice>
+          Content review: {p?.moderationStatus || "pending"}. Save new or
+          changed program details as a draft for review before publishing.
+        </Notice>
+      )}
       <Field
         label="Program name"
         value={title}

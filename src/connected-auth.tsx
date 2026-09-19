@@ -3,6 +3,8 @@ import { useRouter } from "expo-router";
 import { authClient } from "./backend";
 import { useStore } from "./store";
 import { Shell, Heading, Field, Button, Notice, T, C, go } from "./ui";
+import { PolicyLinks } from "./connected-safety";
+import { adultAgeSource } from "./age-policy";
 export function ConnectedAuth({ id }: { id?: string }) {
   const [mode, setMode] = useState<"signin" | "signup" | "verify">("signin");
   const [name, setName] = useState("");
@@ -11,6 +13,7 @@ export function ConnectedAuth({ id }: { id?: string }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [adult, setAdult] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
   const { refresh } = useStore();
@@ -21,6 +24,9 @@ export function ConnectedAuth({ id }: { id?: string }) {
     setMessage("");
     try {
       if (mode === "signup") {
+        if (!adult)
+          throw new Error("TrainWith's beta is for adults 18 and over.");
+        await adultAgeSource();
         if (!name.trim()) throw new Error("Enter your name.");
         const { data, error } = await authClient.auth.signUp({
           email: email.trim(),
@@ -92,6 +98,13 @@ export function ConnectedAuth({ id }: { id?: string }) {
       )}
       {!!error && <Notice error>{error}</Notice>}
       {!!message && <Notice>{message}</Notice>}
+      {mode === "signup" && (
+        <Button
+          secondary
+          title={adult ? "✓ I am 18 or older" : "I am 18 or older"}
+          onPress={() => setAdult(!adult)}
+        />
+      )}
       <Button
         title={
           mode === "signin"
@@ -122,6 +135,7 @@ export function ConnectedAuth({ id }: { id?: string }) {
         During setup, email delivery uses Supabase’s default service. Public
         signups need a configured email provider.
       </T>
+      <PolicyLinks />
     </Shell>
   );
 }

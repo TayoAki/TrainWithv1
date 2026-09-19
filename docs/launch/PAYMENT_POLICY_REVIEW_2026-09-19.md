@@ -1,5 +1,7 @@
 # TrainWith payment and store-policy review
 
+**Historical baseline:** the findings below describe commit `9330325`. The subsequent requested fixes and the selected US-first iOS model are documented in [COMPLIANCE_IMPLEMENTATION.md](COMPLIANCE_IMPLEMENTATION.md). Unverified store settings and signed-device acceptance remain open.
+
 Reviewed 19 September 2026 against source commit `9330325` and current official documentation. Scope: the connected app's payment, account, creator-content and submission flows. No App Store Connect pricing, storefront availability or signed binary was verified in this review. This is a readiness assessment, not an Apple approval or a certification of every jurisdiction's laws.
 
 ## Decision

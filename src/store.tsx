@@ -13,6 +13,8 @@ import { seed } from "./data";
 import type { Transition, PaymentGateway } from "./services";
 import { localPaymentGateway } from "./services";
 import { api, authClient, demoMode } from "./backend";
+import { purchaseEligibility } from "./purchase-policy";
+import { adultAgeSource } from "./age-policy";
 const empty = (): AppState => ({
   version: 1,
   user: null,
@@ -157,11 +159,25 @@ export function Provider({
         throw new Error(
           "This operation must be completed through the payment provider.",
         );
+      let renewalPayload = t.command.payload;
+      if (
+        t.command.name === "membership.renewal" &&
+        (renewalPayload as { renews?: boolean }).renews
+      ) {
+        const eligibility = await purchaseEligibility();
+        if (!eligibility.allowed)
+          throw new Error("Renewal cannot be resumed in this app storefront.");
+        await adultAgeSource();
+        renewalPayload = {
+          ...(renewalPayload as object),
+          client: eligibility.client,
+        };
+      }
       const next = await api<AppState>(
         t.command.name === "membership.renewal"
           ? "/v1/billing/renewal"
           : "/v1/commands",
-        t.command.name === "membership.renewal" ? t.command.payload : t.command,
+        t.command.name === "membership.renewal" ? renewalPayload : t.command,
       );
       if (epoch !== authEpoch.current) return false;
       version.current++;

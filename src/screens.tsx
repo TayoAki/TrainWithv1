@@ -5,6 +5,10 @@ import { useStore } from "./store";
 import { C, Shell, Notice, Empty, Button, go } from "./ui";
 import * as Consumer from "./consumer";
 import * as Creator from "./creator";
+import * as Safety from "./connected-safety";
+import * as Legal from "./legal";
+import { CheckoutReturn } from "./connected-commerce";
+import { demoMode } from "./backend";
 export type ScreenProps = { id?: string; handle?: string };
 const creators: Record<string, React.ComponentType<ScreenProps>> = {
   studio: Creator.Studio,
@@ -22,6 +26,15 @@ const creators: Record<string, React.ComponentType<ScreenProps>> = {
   "creator-settings": Creator.CreatorSettings,
 };
 const screens: Record<string, React.ComponentType<ScreenProps>> = {
+  privacy: Legal.Privacy,
+  terms: Legal.Terms,
+  contact: Legal.Contact,
+  report: Safety.Report,
+  "delete-account": Safety.DeleteAccount,
+  "deletion-status": Safety.DeletionStatus,
+  moderation: Safety.Moderation,
+  "checkout-return": CheckoutReturn,
+  "checkout-canceled": ({ id }) => <CheckoutReturn id={id} canceled />,
   discover: Consumer.Discover,
   channel: Consumer.Channel,
   program: Consumer.ProgramScreen,
@@ -51,6 +64,20 @@ export function AppScreen({
 }) {
   const { state, ready, error } = useStore();
   const router = useRouter();
+  // Policies and deletion receipts remain accessible if auth or the API fails.
+  const publicScreen = [
+    "privacy",
+    "terms",
+    "contact",
+    "deletion-status",
+    "delete-account",
+    "checkout-return",
+    "checkout-canceled",
+  ].includes(screen);
+  if (publicScreen) {
+    const PublicScreen = screens[screen];
+    return <PublicScreen id={id} />;
+  }
   if (!ready)
     return (
       <View
@@ -64,6 +91,22 @@ export function AppScreen({
         <ActivityIndicator color={C.green} />
       </View>
     );
+  if (
+    !demoMode &&
+    state.user &&
+    state.eligibility &&
+    state.eligibility.status !== "active" &&
+    !["settings", "memberships", "manage-membership"].includes(screen)
+  )
+    return <Safety.DeleteAccount />;
+  if (
+    !demoMode &&
+    state.user &&
+    state.eligibility &&
+    !state.eligibility.accepted &&
+    !["settings", "memberships", "manage-membership"].includes(screen)
+  )
+    return <Safety.Eligibility />;
   if ((creators[screen] || screen === "preview") && !state.ownedId)
     return <Creator.CreatorStart />;
   if (screen === "preview")

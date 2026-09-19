@@ -340,7 +340,13 @@ export const setChannelPublished = (
     creatorId: args[0],
     published: args[1],
   });
-export const saveWorkout = (...args: Parameters<typeof localSaveWorkout>) =>
-  action(localSaveWorkout(...args), "workout.save", { ...args[0] });
-export const saveProgram = (...args: Parameters<typeof localSaveProgram>) =>
-  action(localSaveProgram(...args), "program.save", { ...args[0] });
+export const saveWorkout = (...args: Parameters<typeof localSaveWorkout>) => {
+  const payload = { ...args[0] };
+  delete payload.moderationStatus;
+  return action(localSaveWorkout(...args), "workout.save", payload);
+};
+export const saveProgram = (...args: Parameters<typeof localSaveProgram>) => {
+  const payload = { ...args[0] };
+  delete payload.moderationStatus;
+  return action(localSaveProgram(...args), "program.save", payload);
+};

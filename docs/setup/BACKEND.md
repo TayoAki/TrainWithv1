@@ -44,7 +44,7 @@ Railway infrastructure changes require `railway config plan` followed by a revie
 
 The DB file uses the observed Supabase session pooler host for this project. TLS certificate verification remains enabled; use `DATABASE_CA_CERT` if the provider requires its project CA. Never disable certificate verification.
 
-The supplied Mux environment key is **Mux Data analytics configuration**, not a Mux Video API token. It is saved privately for later analytics work. The RevenueCat Test Store key is also saved, but native purchases and the RevenueCat webhook remain disabled. Hosted Stripe Checkout does not need the publishable key. No Supabase service-role key is needed for the implemented routes.
+The supplied Mux environment key is **Mux Data analytics configuration**, not a Mux Video API token. It is saved privately for later analytics work. The RevenueCat Test Store key is also saved, but RevenueCat is unused and its webhook remains disabled. US iOS browser checkout uses Stripe; other storefronts remain unavailable. Hosted Stripe Checkout does not need the publishable key. Account deletion now uses an API-only Supabase server key through Auth admin deletion. It is stored in ignored local configuration and Railway API variables; never expose it to the web/native build.
 
 Secrets are excluded from Git and Docker. Configure Railway secrets through its dashboard or `railway variable set NAME --stdin --skip-deploys`, never CLI arguments or commits. Rotate the Stripe secret that was pasted into the conversation before relying on this environment.
 
@@ -98,6 +98,20 @@ The frontend dependency audit reports 14 moderate Expo/ngrok dependency findings
 
 Before beta: two verified test accounts; ownership rejection; creator approval and Connect readiness; actual upload/transcode/signed playback; sandbox checkout; renewal failure; cancellation; refund; webhook replay; worker restart; account switching; native playback; origin restrictions and a restore procedure.
 
-Before public launch: agreed fees/refund/payout policies; activated Stripe/Connect live account and a reviewed live-key change (currently rejected); RevenueCat store catalog/native SDK/reconciliation; Apple Developer Program and store submission; password recovery and automated deletion/export; persistent browser login; moderation and support ownership; licensed creator content; privacy/terms; database backup restoration; external error/queue alerts; scheduled provider reconciliation. Resend and Sentry are optional choices, but public auth mail and actionable monitoring are still required.
+Before public launch: agreed fees/refund/payout policies; activated Stripe/Connect live account and a reviewed live-key change (currently rejected); signed native US browser-checkout acceptance; Apple Developer Program and store submission; password recovery and tested data export; persistent browser login; moderation/support ownership; licensed content; legal operator identity and store privacy disclosures; database backup restoration; external queue alerts; scheduled provider reconciliation. RevenueCat is optional for a future store-IAP model. Deletion and moderation are implemented; see the current implementation record. Resend and Sentry are optional choices, but public auth mail and actionable monitoring are still required.
 
 Beta limits: state reads cap at 300 creators, 3,000 workouts and 1,000 programs; studio lists cap at 1,000 members. Add pagination before scaling. Direct video upload currently uses web Studio. Totals represent recorded receipts, not available payouts. No real-money purchase or payout was created during setup.
+
+## Safety release configuration
+
+Migration `202609190002_safety_and_deletion.sql` adds policy acceptance, moderation, blocking/reporting, private contact intake and durable deletion jobs. Existing workouts/programs are moved to drafts for review. Never edit either applied migration.
+
+- `SUPABASE_SERVICE_ROLE_KEY`: API only. An existing Supabase secret API key is supported by the current SDK; it was verified with the Auth admin API. No frontend access.
+- `IOS_EXTERNAL_CHECKOUT=true`: staging sandbox US iOS browser checkout; false disables native purchase/resume entry points. The app obtains a StoreKit country code, checks eligibility again before opening Stripe, and refuses unknown/non-US storefronts. This is client eligibility, not a cryptographic storefront attestation.
+- `LEGAL_OPERATOR_NAME`, `SUPPORT_EMAIL`: user-supplied public identity/contact. Until configured, the policy identifies only the TrainWith brand and offers public contact intake. Finish these before inviting testers.
+- `ADMIN_USER_IDS`: UUID allowlist for the actual verified operator. Open Settings → Moderation dashboard to review creators, workouts/programs, reports, contacts and failed deletions. Review all images, metadata and video before approval. Creators then explicitly publish approved drafts. Review edits again.
+- Keep `RUN_WORKER=true`. A deletion request immediately restricts the account and creates a durable job; its receipt confirms success only after subscriptions, Mux content, app records and Supabase Auth are removed. Failed provider steps retry, then remain visible for operator retry. Retain limited financial records and tombstone IDs; Stripe connected accounts may retain their legally required records.
+
+Added routes: `/public/config`, `/public/contact`, `/public/deletion-status`, `/v1/policy/accept`, `/v1/safety/report`, `/v1/safety/block`, `/v1/account/delete`, `/v1/admin/moderation`, `/v1/admin/preview`. All sensitive routes enforce authentication/ownership or operator allowlisting. Public endpoints are rate-limited and reveal no account data.
+
+See [current implementation and acceptance](../launch/COMPLIANCE_IMPLEMENTATION.md), [remaining beta tasks](../launch/BETA_CHECKLIST.md) and [store disclosure worksheet](../launch/STORE_DISCLOSURES.md).

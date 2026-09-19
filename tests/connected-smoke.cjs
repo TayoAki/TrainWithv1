@@ -60,6 +60,12 @@ const state = {
   saved: [],
   supports: [],
   ownedId: null,
+  eligibility: {
+    accepted: false,
+    status: "active",
+    policyVersion: "2026-09-19",
+  },
+  blocked: [],
 };
 const requests = [];
 let allowLogin = false;
@@ -99,6 +105,23 @@ w.fetch = async (input, init = {}) => {
       },
     });
   }
+  if (url.endsWith("/v1/policy/accept")) {
+    const body = JSON.parse(init.body);
+    assert.equal(body.adult, true);
+    assert.equal(body.accepted, true);
+    assert.equal(body.version, "2026-09-19");
+    state.eligibility.accepted = true;
+    return json({ ok: true });
+  }
+  if (url.endsWith("/public/config"))
+    return json({
+      operatorName: "TrainWith",
+      supportEmail: null,
+      policyVersion: "2026-09-19",
+      minimumAge: 18,
+      iosExternalCheckout: true,
+      sandbox: true,
+    });
   if (url.endsWith("/v1/state"))
     return json({ ...state, user: init.headers?.Authorization ? user : null });
   if (url.endsWith("/v1/commands")) {
@@ -173,7 +196,22 @@ const fill = (name, value) =>
     console.log("PASS: invalid credentials stay signed out with no demo login");
     allowLogin = true;
     await click("Sign in");
+    await text("A space for adults to train.");
+    const consentButton = getByRole(doc.body, "button", {
+      name: "Continue to TrainWith",
+      exact: true,
+    });
+    assert.ok(
+      consentButton.getAttribute("aria-disabled") === "true" ||
+        consentButton.disabled,
+    );
+    await click("I am 18 or older");
+    await click("I accept the terms and acknowledge the privacy policy");
+    await click("Continue to TrainWith");
     await text("Hey, Real.");
+    console.log(
+      "PASS: adult and policy acceptance is required and submitted to the server",
+    );
     assert.ok(
       requests.some(
         (r) => r.url.endsWith("/v1/state") && r.init.headers.Authorization,
@@ -195,6 +233,24 @@ const fill = (name, value) =>
     assert.equal(w.localStorage.getItem("trainwith.v1"), null);
     console.log(
       "PASS: support is submitted with authentication and no demo persistence",
+    );
+    await click("Profile");
+    await click("Settings");
+    await click("Privacy policy");
+    await text("Your privacy at TrainWith");
+    await click("Delete account");
+    await text("Permanently delete your account");
+    const deletionButton = getByRole(doc.body, "button", {
+      name: "Permanently delete my account",
+      exact: true,
+    });
+    assert.ok(
+      deletionButton.getAttribute("aria-disabled") === "true" ||
+        deletionButton.disabled,
+    );
+    assert.ok(!requests.some((r) => r.url.endsWith("/v1/account/delete")));
+    console.log(
+      "PASS: privacy and deletion are reachable; deletion requires explicit confirmation and password",
     );
     dom.window.close();
   } catch (error) {

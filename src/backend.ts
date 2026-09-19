@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import { adultAgeSource } from "./age-policy";
 
 export const demoMode = process.env.EXPO_PUBLIC_DEMO_MODE === "true";
 export const appWebUrl = (
@@ -43,9 +44,12 @@ export const authClient =
     : null;
 export async function api<T>(path: string, body?: unknown): Promise<T> {
   if (!apiUrl) throw new Error("The API URL has not been configured.");
-  const { data } = authClient
-    ? await authClient.auth.getSession()
-    : { data: { session: null } };
+  if (path === "/v1/videos/playback" || path === "/v1/billing/checkout")
+    await adultAgeSource();
+  const { data } =
+    authClient && !path.startsWith("/public/")
+      ? await authClient.auth.getSession()
+      : { data: { session: null } };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 25000);
   try {

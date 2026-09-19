@@ -5,6 +5,7 @@ import type { Providers, CheckoutInput } from "./providers.js";
 import { ApiError, requireFeature } from "./errors.js";
 import type { Config } from "./config.js";
 import { owned } from "./catalog.js";
+import { requireAdult } from "./safety.js";
 
 export async function checkout(
   db: DB,
@@ -12,18 +13,23 @@ export async function checkout(
   u: Identity,
   creatorId: string,
   config: Pick<Config, "fee" | "APP_URL">,
+  nativeReturn = false,
 ) {
   requireFeature(config.fee !== undefined, "Platform fee");
   // Commit the key and exact provider payload BEFORE requesting Checkout.
   // A lost Stripe response or failed final DB write must reuse the same key.
   const attempt = await db.transaction(async (tx) => {
     await tx.query("select pg_advisory_xact_lock(hashtext($1))", [
+      `account:${u.id}`,
+    ]);
+    await requireAdult(tx, u);
+    await tx.query("select pg_advisory_xact_lock(hashtext($1))", [
       `checkout:${u.id}:${creatorId}`,
     ]);
     const c = await one(
       tx,
-      `select c.*,b.stripe_account_id,b.charges_enabled,b.payouts_enabled from trainwith.creators c join trainwith_private.creator_billing b on b.creator_id=c.id where c.id=$1 and c.published and c.approved`,
-      [creatorId],
+      `select c.*,b.stripe_account_id,b.charges_enabled,b.payouts_enabled from trainwith.creators c join trainwith_private.creator_billing b on b.creator_id=c.id join trainwith.profiles owner on owner.id=c.owner_id where c.id=$1 and c.published and c.approved and owner.account_status='active' and not exists(select 1 from trainwith_private.blocks where user_id=$2 and creator_id=c.id) for share of c`,
+      [creatorId, u.id],
     );
     if (
       !c ||
@@ -88,6 +94,7 @@ export async function checkout(
       expires: Math.floor(Date.now() / 1000) + 3600,
       fee: config.fee!,
       appUrl: config.APP_URL,
+      nativeReturn,
     };
     return (await one(
       tx,
@@ -101,6 +108,25 @@ export async function checkout(
     ...(attempt.payload as Omit<CheckoutInput, "key">),
     key: `checkout:${attempt.request_key}`,
   });
+  const available = await one(
+    db,
+    "select 1 from trainwith.creators c join trainwith.profiles p on p.id=c.owner_id where c.id=$1 and p.account_status='active' and c.approved and c.published and exists(select 1 from trainwith.profiles buyer where buyer.id=$2 and buyer.account_status='active')",
+    [creatorId, u.id],
+  );
+  if (!available) {
+    await p.closeCheckout(
+      {
+        ...(attempt.payload as CheckoutInput),
+        key: `checkout:${attempt.request_key}`,
+      },
+      session.id,
+    );
+    throw new ApiError(
+      409,
+      "CHECKOUT_UNAVAILABLE",
+      "This membership is no longer available.",
+    );
+  }
   await db.query(
     "update trainwith_private.checkout_attempts set session_id=$1,url=$2,expires_at=to_timestamp($3) where user_id=$4 and creator_id=$5 and request_key=$6",
     [
@@ -120,22 +146,30 @@ export async function connect(
   u: Identity,
   creatorId: string,
 ) {
-  await owned(db, u, creatorId);
-  const current = await one(
-    db,
-    "select stripe_account_id from trainwith_private.creator_billing where creator_id=$1",
-    [creatorId],
-  );
-  const result = await p.connect(
-    creatorId,
-    u.email,
-    current?.stripe_account_id ? String(current.stripe_account_id) : undefined,
-  );
-  await db.query(
-    `insert into trainwith_private.creator_billing(creator_id,stripe_account_id) values($1,$2) on conflict(creator_id) do update set stripe_account_id=excluded.stripe_account_id`,
-    [creatorId, result.account],
-  );
-  return { url: result.url };
+  return db.transaction(async (tx) => {
+    await tx.query("select pg_advisory_xact_lock(hashtext($1))", [
+      `account:${u.id}`,
+    ]);
+    await requireAdult(tx, u);
+    await owned(tx, u, creatorId);
+    const current = await one(
+      tx,
+      "select stripe_account_id from trainwith_private.creator_billing where creator_id=$1",
+      [creatorId],
+    );
+    const result = await p.connect(
+      creatorId,
+      u.email,
+      current?.stripe_account_id
+        ? String(current.stripe_account_id)
+        : undefined,
+    );
+    await tx.query(
+      `insert into trainwith_private.creator_billing(creator_id,stripe_account_id) values($1,$2) on conflict(creator_id) do update set stripe_account_id=excluded.stripe_account_id`,
+      [creatorId, result.account],
+    );
+    return { url: result.url };
+  });
 }
 export async function syncAccount(db: DB, p: Providers, accountId: string) {
   const account = await p.account(accountId);

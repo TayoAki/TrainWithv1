@@ -1,0 +1,32 @@
+# Approved implementation scope
+
+The user's 19 September request authorizes the fixes in the payment-policy review. The existing review is the design baseline; this plan makes the implementation choices concrete.
+
+1. Launch model: free download, US-first iOS, external Stripe Checkout in the system browser, with StoreKit storefront detection and no native checkout when the storefront is unavailable or unsupported. Android purchases remain unavailable. Stripe stays in sandbox until the separate live-launch gate is complete. A browser return page opens the existing TrainWith URL scheme without passing credentials; the app refreshes authoritative membership state.
+2. Initial audience: 18+ pending the user's age-scope answer. Require explicit policy/age acceptance on the server. On supported iOS devices request the OS age range; underage, declined or unknown results cannot grant adult access. Older devices/web use declared adult eligibility, identified honestly as self-declared rather than verified identity. Avoid collecting full birth dates.
+3. Safety: report a creator or workout, block/unblock creators, filter discovery and playback on the server, and expose an admin moderation queue with removal/suspension and audit trails. Blocking preserves billing management; explain that blocking does not cancel a subscription.
+4. Deletion: require fresh password confirmation and an explicit deletion action. Immediately restrict the account and unpublish creator content. A durable, retryable worker expires open Checkout sessions, stops subscriptions, deletes media and customer records, removes app data and Supabase Auth identity, and exposes a private receipt for completion. Retain only required payment/security records and explain retention. Provider failures must never be reported as successful deletion.
+5. Privacy and terms: publish accessible native/web screens describing actual providers, purposes, retention, deletion, billing, content rights and safety. Operator identity and a public email remain user-supplied configuration; no invented legal entity or email. Provide an accessible support intake and an authenticated operator inbox.
+6. Verification: exercise SQL migrations and API authorization, deletion failure/retry and access revocation, blocked-content access, age enforcement, native checkout gating and safe return URLs. Run existing domain/UI checks and platform exports. Inspect native integration and explicitly record device/build checks that cannot be completed on the installed Xcode.
+
+No TestFlight distribution, production charges or unrelated site redesign is part of this implementation. Update the beta checklist to separate completed code/tests from remaining account, disclosure and device-verification work.
+
+## Implemented and verified
+
+- Native module reads StoreKit's actual storefront, rather than device language/IP. Unknown/non-US results fail closed; eligibility is checked on foreground, preparation and browser opening. Cancellation remains available without adult/policy eligibility; resuming renewal requires it and the purchase policy.
+- Checkout URLs use trusted Stripe hosts and fixed server return pages. Return URLs contain only a creator ID, never a token or payment credential. A return alone cannot grant access; the app refreshes webhook-backed membership state.
+- The initial audience defaults to 18+ as proposed. Apple age range is requested on iOS 26+; under-18, declined or unknown lower bounds fail. Older systems/web record an explicit adult self-declaration. This is not identity verification or proof of compliance with every state age-assurance law.
+- Creator profiles, workouts and programs require operator review. Relevant edits invalidate approval. Reports are private, blocks restrict API and direct catalog reads, and blocked members retain billing management.
+- Account deletion requires fresh password confirmation, restricts the account immediately and returns a private receipt. The worker cancels affected subscriptions, expires checkout attempts, removes media and app records, then deletes Supabase Auth. Retries never claim completion prematurely. Financial records and tombstone identifiers have limited retention; Stripe connected-account records are not automatically destroyed.
+- Privacy/terms/contact screens are accessible when signed out. Public contact intake and the private moderation inbox work without Resend; a human support/moderation owner is still required.
+
+Validation on 19 September 2026: lint and TypeScript passed; 10 domain tests, 20 backend integration tests, 12 demo interaction groups and 7 connected interaction groups passed. iOS and Android JavaScript exports passed. Autolinking discovers both the storefront and age-range modules. These checks do not compile/sign the Swift module or prove device checkout. Migration `202609190002_safety_and_deletion.sql` applied to staging; the existing migration was not edited. The API-only Supabase secret was verified with the Auth admin endpoint and installed on Railway without exposing it in source or a client bundle.
+
+## Remaining release gates
+
+1. Supply the legal operator name/public privacy-support email and choose a verified app operator account for `ADMIN_USER_IDS`. The Auth admin check found zero users before disposable verification. No moderator privileges were assigned to an invented account.
+2. Configure signup/recovery email delivery for testers; the default Supabase sender remains restricted. Resend can stay paused.
+3. Complete the hosted licensed-content journey, sandbox subscription lifecycle, creator/media deletion and manual moderation. Automated provider fixtures are not live payment/media acceptance.
+4. Configure the permanent bundle ID/signing team/EAS store build, US-only availability, Free price, privacy disclosures and age rating in App Store Connect. Use the [disclosure worksheet](STORE_DISCLOSURES.md).
+5. Build and test on real devices: US/non-US/unknown storefronts, storefront change while checkout is open, age-range outcomes, browser purchase/cancel/return, auth and signed playback. Xcode 26.0.1 on this Mac is below Expo SDK 57's requirement; upgrade or use the configured supported EAS image. No TestFlight build has been submitted by this change.
+6. Complete the remaining [beta checklist](BETA_CHECKLIST.md) before inviting testers. Production billing remains disabled; platform fees, taxes, refunds, operational retention and production hardening remain separate launch gates.

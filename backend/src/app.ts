@@ -19,6 +19,15 @@ import {
 } from "./catalog.js";
 import { checkout, connect, studio, syncAccount } from "./billing.js";
 import { enqueue, syncSubscription } from "./events.js";
+import {
+  acceptPolicy,
+  POLICY_VERSION,
+  reportContent,
+  requireAdult,
+  setBlock,
+  validatePurchaseClient,
+} from "./safety.js";
+import { deletionStatus, requestDeletion } from "./deletion.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -70,6 +79,17 @@ export async function buildApp(
       request.identity = await authenticate(header.slice(7));
       await ensureProfile(db, request.identity);
     }
+    const path = request.url.split("?")[0];
+    if (
+      request.identity &&
+      ![
+        "/v1/state",
+        "/v1/policy/accept",
+        "/v1/account/delete",
+        "/v1/billing/renewal",
+      ].includes(path)
+    )
+      await requireAdult(db, request.identity);
   });
   app.addHook("onSend", async (_request, reply, payload) => {
     reply.header("Cache-Control", "no-store");
@@ -137,6 +157,62 @@ export async function buildApp(
     }
   });
   app.get("/v1/state", async (req) => readState(db, req.identity));
+  app.get("/public/config", async () => ({
+    policyVersion: POLICY_VERSION,
+    minimumAge: 18,
+    iosStorefronts: ["USA"],
+    iosExternalCheckout: c.IOS_EXTERNAL_CHECKOUT === "true",
+    sandbox: true,
+    operatorName: c.LEGAL_OPERATOR_NAME || "TrainWith",
+    supportEmail: c.SUPPORT_EMAIL || null,
+    legalIdentityConfigured: !!(c.LEGAL_OPERATOR_NAME && c.SUPPORT_EMAIL),
+  }));
+  app.post("/v1/policy/accept", async (req) =>
+    acceptPolicy(db, user(req.identity), req.body),
+  );
+  app.post("/v1/safety/block", async (req) =>
+    setBlock(db, user(req.identity), req.body),
+  );
+  app.post(
+    "/v1/safety/report",
+    { config: { rateLimit: { max: 10, timeWindow: "1 hour" } } },
+    async (req) => reportContent(db, user(req.identity), req.body),
+  );
+  app.post(
+    "/public/contact",
+    { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } },
+    async (req) => {
+      const body = z
+        .object({
+          email: z.email().max(254),
+          message: z.string().trim().min(10).max(5000),
+          website: z.literal("").default(""),
+        })
+        .strict()
+        .parse(req.body);
+      return one(
+        db,
+        "insert into trainwith_private.contact_requests(email,message) values($1,$2) returning id",
+        [body.email, body.message],
+      );
+    },
+  );
+  app.post(
+    "/v1/account/delete",
+    { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } },
+    async (req) => {
+      if (!c.SUPABASE_SERVICE_ROLE_KEY)
+        throw new ApiError(
+          503,
+          "DELETION_UNAVAILABLE",
+          "Account deletion is temporarily unavailable. Please try again shortly.",
+        );
+      return requestDeletion(db, p, user(req.identity), req.body);
+    },
+  );
+  app.post("/public/deletion-status", async (req) =>
+    deletionStatus(db, req.body),
+  );
   app.post("/v1/commands", async (req) => {
     const u = user(req.identity);
     const body = z
@@ -151,11 +227,18 @@ export async function buildApp(
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (req) => {
       const u = user(req.identity);
-      const { creatorId } = z
-        .object({ creatorId: z.string().min(3).max(100) })
+      const { creatorId, client } = z
+        .object({
+          creatorId: z.string().min(3).max(100),
+          client: z.unknown().optional(),
+        })
         .strict()
         .parse(req.body);
-      return checkout(db, p, u, creatorId, c);
+      const purchase = validatePurchaseClient(
+        client,
+        c.IOS_EXTERNAL_CHECKOUT === "true",
+      );
+      return checkout(db, p, u, creatorId, c, purchase.platform === "ios");
     },
   );
   app.post("/v1/billing/portal", async (req) => {
@@ -171,10 +254,18 @@ export async function buildApp(
   });
   app.post("/v1/billing/renewal", async (req) => {
     const u = user(req.identity);
-    const { creatorId, renews } = z
-      .object({ creatorId: z.string(), renews: z.boolean() })
+    const { creatorId, renews, client } = z
+      .object({
+        creatorId: z.string(),
+        renews: z.boolean(),
+        client: z.unknown().optional(),
+      })
       .strict()
       .parse(req.body);
+    if (renews) {
+      await requireAdult(db, u);
+      validatePurchaseClient(client, c.IOS_EXTERNAL_CHECKOUT === "true");
+    }
     const sub = await one(
       db,
       "select id from trainwith_private.subscriptions where user_id=$1 and creator_id=$2 and status in ('active','past_due','trialing') order by started_at desc limit 1",
@@ -239,6 +330,10 @@ export async function buildApp(
         throw new ApiError(403, "FORBIDDEN", "Upload origin is not allowed.");
       return db.transaction(async (tx) => {
         await tx.query("select pg_advisory_xact_lock(hashtext($1))", [
+          `account:${u.id}`,
+        ]);
+        await requireAdult(tx, u);
+        await tx.query("select pg_advisory_xact_lock(hashtext($1))", [
           `upload:${w.creator_id}`,
         ]);
         const pending = await one(
@@ -258,7 +353,7 @@ export async function buildApp(
           [workoutId, upload.id],
         );
         await tx.query(
-          "update trainwith.workouts set published=false where id=$1",
+          "update trainwith.workouts set published=false,moderation_status='pending' where id=$1",
           [workoutId],
         );
         return { url: upload.url, uploadId: upload.id };
@@ -357,6 +452,122 @@ export async function buildApp(
         "select s.*,p.name from trainwith.support_requests s join trainwith.profiles p on p.id=s.user_id order by s.created_at desc limit 200",
       )
     ).rows;
+  });
+  app.get("/v1/admin/moderation", async (req) => {
+    admin(req.identity);
+    return {
+      creators: (
+        await db.query(
+          "select c.id,c.name,c.handle,c.tagline,c.bio,c.photo from trainwith.creators c join trainwith.profiles p on p.id=c.owner_id where not c.approved and p.account_status='active' order by c.created_at limit 200",
+        )
+      ).rows,
+      reports: (
+        await db.query(
+          "select * from trainwith_private.reports where status='open' order by created_at desc limit 200",
+        )
+      ).rows,
+      workouts: (
+        await db.query(
+          "select w.*,c.name as creator_name from trainwith.workouts w join trainwith.creators c on c.id=w.creator_id where w.moderation_status<>'approved' order by w.created_at limit 200",
+        )
+      ).rows,
+      programs: (
+        await db.query(
+          "select p.*,c.name as creator_name from trainwith.programs p join trainwith.creators c on c.id=p.creator_id where p.moderation_status<>'approved' order by p.created_at limit 200",
+        )
+      ).rows,
+      contacts: (
+        await db.query(
+          "select * from trainwith_private.contact_requests where status='open' order by created_at desc limit 200",
+        )
+      ).rows,
+      deletions: (
+        await db.query(
+          "select id,status,created_at,last_error from trainwith_private.deletions where status<>'done' order by created_at limit 200",
+        )
+      ).rows,
+    };
+  });
+  app.post("/v1/admin/moderation", async (req) => {
+    const u = admin(req.identity);
+    const body = z
+      .object({
+        action: z.enum([
+          "approve_workout",
+          "remove_workout",
+          "approve_program",
+          "remove_program",
+          "suspend_creator",
+          "resolve_report",
+          "resolve_contact",
+          "retry_deletion",
+        ]),
+        id: z.string().min(3).max(100),
+      })
+      .strict()
+      .parse(req.body);
+    await db.transaction(async (tx) => {
+      if (body.action === "approve_workout" || body.action === "remove_workout")
+        await tx.query(
+          "update trainwith.workouts set moderation_status=$1,published=false where id=$2",
+          [
+            body.action === "approve_workout" ? "approved" : "rejected",
+            body.id,
+          ],
+        );
+      if (body.action === "approve_program" || body.action === "remove_program")
+        await tx.query(
+          "update trainwith.programs set moderation_status=$1,published=false where id=$2",
+          [
+            body.action === "approve_program" ? "approved" : "rejected",
+            body.id,
+          ],
+        );
+      if (body.action === "suspend_creator")
+        await tx.query(
+          "update trainwith.creators set approved=false,published=false where id=$1",
+          [body.id],
+        );
+      if (body.action === "resolve_report")
+        await tx.query(
+          "update trainwith_private.reports set status='resolved',resolved_at=now() where id=$1::uuid",
+          [body.id],
+        );
+      if (body.action === "resolve_contact")
+        await tx.query(
+          "update trainwith_private.contact_requests set status='resolved' where id=$1::uuid",
+          [body.id],
+        );
+      if (body.action === "retry_deletion")
+        await tx.query(
+          "update trainwith_private.deletions set status='pending',attempts=0,available_at=now() where id=$1::uuid and status='failed'",
+          [body.id],
+        );
+      await tx.query(
+        "insert into trainwith_private.audit_log(actor_id,action,subject_id) values($1,$2,$3)",
+        [u.id, body.action, body.id],
+      );
+    });
+    return { ok: true };
+  });
+  app.post("/v1/admin/preview", async (req) => {
+    admin(req.identity);
+    const { workoutId } = z
+      .object({ workoutId: z.string().min(3).max(100) })
+      .strict()
+      .parse(req.body);
+    const asset = await one(
+      db,
+      "select playback_id from trainwith_private.video_assets where workout_id=$1 and status='ready'",
+      [workoutId],
+    );
+    if (!asset?.playback_id)
+      throw new ApiError(
+        409,
+        "VIDEO_NOT_READY",
+        "Video is not ready for review.",
+      );
+    return { url: await p.playback(String(asset.playback_id), 600) };
   });
   app.post("/v1/admin/creators/approve", async (req) => {
     const u = admin(req.identity);

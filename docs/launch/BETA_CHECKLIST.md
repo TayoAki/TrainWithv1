@@ -2,11 +2,11 @@
 
 Created 19 September 2026 from the [readiness review](READINESS_REVIEW_2026-09-19.md). This is the working task list; unchecked items still need implementation or verification.
 
-Updated after the [payment and store-policy review](PAYMENT_POLICY_REVIEW_2026-09-19.md): a free download does not resolve paid-content rules, RevenueCat is optional, and TestFlight compliance work must happen before submission/distribution.
+Updated after the [implementation](COMPLIANCE_IMPLEMENTATION.md) and [payment and store-policy review](PAYMENT_POLICY_REVIEW_2026-09-19.md): a free download does not resolve paid-content rules, RevenueCat is optional, and TestFlight compliance work must happen before submission/distribution.
 
 **First milestone:** a private web beta with real accounts, creator-owned videos and Stripe sandbox payments. Then distribute an internal TestFlight build for mobile testing. Suggested first group: 1–2 creators and 3–5 consumers, invited after the relevant checks pass.
 
-**Beta scope:** creators upload through the web studio; consumers test discovery, memberships and playback. No real charges or payouts. Native purchases remain disabled. Resend and Sentry remain paused; verification email delivery and an assigned support contact are still needed.
+**Beta scope:** creators upload through the web studio; consumers test discovery, memberships and playback. No real charges or payouts. US iOS browser checkout is implemented for sandbox testing; unsupported/unknown storefronts and Android have no purchase links. Signed-device verification is still required before distribution. Resend and Sentry remain paused; verification email delivery and an assigned support contact are still needed.
 
 Owners below are proposed responsibilities: **You** supplies business/account decisions and content; **Development** implements and verifies; **Together** runs acceptance tests. Check a task only when its acceptance result has evidence, with the environment, commit/build and test date recorded.
 
@@ -29,7 +29,7 @@ These checks describe infrastructure and implementation, not completed user jour
 ## 2. Prove the web beta works
 
 - [ ] **B05 — Together:** Complete creator signup, profile and Stripe **test** Connect onboarding. Confirm the sandbox account meets the app's publishing checks. Record any onboarding or verification errors.
-- [ ] **B06 — Together:** Upload the real free and paid workouts through the signed-in web studio, wait for processing, edit metadata and publish. Approve and publish the channel; prove it appears in discovery while drafts and unapproved channels remain private.
+- [ ] **B06 — Together:** Upload the real free and paid workouts through the signed-in web studio, wait for processing, save metadata as drafts, have the operator review the videos/metadata, then publish. Review any programs and approve/publish the channel; prove it appears in discovery while drafts and unapproved channels remain private.
 - [ ] **B07 — Development:** Test interrupted/failed uploads and retry, including Safari and a larger file. Fix states that leave a creator without a clear recovery path; verify abandoned/replaced media handling. Native upload stays clearly labeled as unavailable.
 - [ ] **B08 — Together:** As an independent consumer, play the free workout and confirm the paid workout is locked. Complete an actual sandbox Checkout through the app; return, sign in again if required, refresh membership and play the paid workout. Save the Checkout/subscription IDs as evidence.
 - [ ] **B09 — Development:** Verify canceled and declined Checkout do not grant access. Test renewal, failed renewal, cancellation at period end, resuming a canceling subscription, expiration and refund. Confirm access and earnings records match the provider's state without duplicate ledger entries.
@@ -48,7 +48,7 @@ These checks describe infrastructure and implementation, not completed user jour
 - [ ] **B15 — Development:** Configure native build variables with the hosted staging API/web URLs and Supabase public values, with demo mode off. Confirm no localhost URLs or server secrets are bundled. Railway variables do not automatically configure a native build.
 - [ ] **B16 — Development:** Produce a signed iOS archive, upload it to App Store Connect, resolve processing issues and install it through internal TestFlight. Record the build number. A successful JavaScript export does not satisfy this task.
 - [ ] **B17 — Together:** On physical devices, test fresh install, verified signup/login, app relaunch, account switching, free and paid playback, seeking, background/foreground return, expired video tokens and interrupted networking. Include iPad while the app declares iPad support.
-- [ ] **B18 — Development:** Verify the native beta clearly explains its limits: creator uploads happen on web and new native purchases are disabled. Existing sandbox memberships must load and authorize playback correctly. RevenueCat is optional; confirm the permitted payment/access model through B27.
+- [ ] **B18 — Development:** Verify the native beta clearly explains its limits: creator uploads happen on web and Stripe sandbox browser purchases are offered only to eligible US iOS storefronts. Test unknown/non-US storefronts, foreground/storefront changes, browser cancellation and app return. Existing sandbox memberships must load and authorize playback correctly. RevenueCat is optional; confirm the permitted payment/access model through B27.
 
 **Internal TestFlight gate:** the preceding compliance gate and B13–B18 pass, and the web acceptance checks remain valid for the backend used by that build. Internal testers must have appropriate App Store Connect access; ordinary customers belong in an external testing group when it is ready.
 
@@ -75,14 +75,14 @@ Retest result and build:
 
 ## 5. Store compliance and paid launch gates
 
-- [ ] **B22 — Development, before TestFlight:** Implement explicit in-app account deletion, account recovery/resend flows, accessible privacy/terms/support pages, and content/user reporting, blocking and moderation. Verify deletion and moderation outcomes, including associated data, billing handling and confirmation of completion. A generic support request is insufficient.
-- [ ] **B23 — Together:** Prepare beta review information, working review credentials, privacy and export-compliance declarations, and external TestFlight review where required. Decide which countries/storefronts the beta supports. Follow the [release and policy guidance in the readiness review](READINESS_REVIEW_2026-09-19.md).
-- [ ] **B24 — Together, before native paid sales:** Choose the store billing/access model for the intended storefronts. If using in-app purchases, implement and test purchase, restore, refund/expiry and per-creator entitlements. RevenueCat is optional tooling for store billing; it does not pay creators. Define creator settlement for store proceeds separately from Stripe web payments.
+- [ ] **B22 — Development, before TestFlight:** Deletion, privacy/terms/contact, reports, creator blocking and moderated publication are implemented and covered by automated tests. Remaining: enable the real operator, supply legal identity/contact details, prove the hosted creator/media/payment deletion journey, and complete account recovery/resend delivery. See the implementation evidence below.
+- [ ] **B23 — Together:** Prepare beta review information, working review credentials, privacy and export-compliance declarations, and external TestFlight review where required. Use the selected US-only iOS launch scope and enter it in App Store Connect; Android and other native storefronts are outside this release. Follow the [release and policy guidance in the readiness review](READINESS_REVIEW_2026-09-19.md).
+- [ ] **B24 — Together, before native paid sales:** The selected initial model is US iOS external-browser Stripe Checkout. Complete signed-device and hosted payment acceptance. If using in-app purchases, implement and test purchase, restore, refund/expiry and per-creator entitlements. RevenueCat is optional tooling for store billing; it does not pay creators. Define creator settlement for store proceeds separately from Stripe web payments.
 - [ ] **B25 — Together, before real money:** Agree fees, countries, taxes, refunds and payout responsibility; activate payment readiness; create separate production configuration and complete controlled live acceptance. The app currently rejects live Stripe keys, so replacing a key is not sufficient.
 - [ ] **B26 — Development, before production:** Restrict the runtime database role, separate production from staging, rotate temporary/shared credentials, test backup restoration and establish alerts, support and reconciliation procedures. Sentry is optional; operational ownership is not.
-- [ ] **B27 — Together, before TestFlight:** Confirm intended storefronts and document the permitted access/payment model for them. Verify the app's download price is Free in App Store Connect. For a US external-Checkout release, implement and test storefront detection, browser purchase and return handling before enabling links. For other markets, establish IAP, reader eligibility or applicable regional terms; do not assume worldwide Stripe permission. Keep the beta's new native purchases disabled until its chosen flow passes.
-- [ ] **B28 — Together, before TestFlight:** Decide the intended age audience; add inappropriate-content reporting and required age restrictions. Complete the current age-rating questionnaire accurately and assess applicable regional age requirements. Verify privacy disclosures and SDK manifests in the signed build.
-- [ ] **B29 — Development, before TestFlight:** Replace misleading native Join/purchase prompts with the chosen supported experience, remove “Sample coach profile” from real profiles, and replace or verify the hard-coded planned share domain. Check membership cancel/resume and every outbound link against the selected payment model.
+- [ ] **B27 — Together, before TestFlight:** US-first iOS with external-browser Stripe is selected and implemented. Set and verify US-only availability and a Free download price in App Store Connect. Prove StoreKit storefront detection and browser purchase/return in the signed build before distribution. For other markets, establish IAP, reader eligibility or applicable regional terms; do not assume worldwide Stripe permission. The server switch can disable native purchase entry points without changing web checkout.
+- [ ] **B28 — Together, before TestFlight:** The initial beta is 18+; explicit adult/policy acceptance and inappropriate-content reporting are implemented. iOS 26+ requests Apple age range; older iOS/web use an explicit self-declaration. Test under-18, unknown and declined results on a real device. Complete the current age-rating questionnaire accurately and assess applicable regional age requirements. Verify privacy disclosures and SDK manifests in the signed build.
+- [ ] **B29 — Development, before TestFlight:** The Join gating, real-profile labels and configured share domain are corrected. Cancellation stays available when access is restricted; resumption checks purchase eligibility. Verify these screens, all links and foreground/storefront changes in the signed build.
 
 ## Links and evidence log
 
@@ -92,6 +92,19 @@ Retest result and build:
 - [Full readiness review and official sources](READINESS_REVIEW_2026-09-19.md)
 - [Payment and store-policy findings and official sources](PAYMENT_POLICY_REVIEW_2026-09-19.md)
 
-| Task    | Environment / commit or build | Evidence and result                                                                            | Tested by / date |
-| ------- | ----------------------------- | ---------------------------------------------------------------------------------------------- | ---------------- |
-| B01–B29 | Pending                       | Add a row when each task is verified; do not store credentials or private tester details here. | —                |
+| Task                 | Environment / commit or build | Evidence and result                                                                            | Tested by / date |
+| -------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------- | ---------------- |
+| Remaining acceptance | Pending                       | Add a row when each task is verified; do not store credentials or private tester details here. | —                |
+
+## Implementation evidence — 19 September 2026
+
+- [x] Current policy and adult confirmation are required server-side; playback requires a signed-in eligible account.
+- [x] US StoreKit storefront module, checkout eligibility checks, system-browser Stripe links and safe app-return screens are implemented. Expo autolinking finds both the storefront and Apple age-range modules. This is not a signed-device result.
+- [x] Explicit deletion with fresh password confirmation, immediate restrictions, durable cleanup/retry and a private status receipt is implemented. Automated failure/retry tests cover media, billing, Auth deletion and delayed events.
+- [x] Report creator/workout, block/unblock, server/RLS filtering, review dashboard, content removal and private support intake are implemented. Profiles, workouts and programs need review; edits invalidate approval.
+- [x] Backend migration and authorization tests: 20 passed. Lint/typecheck and 10 domain tests passed. Demo web interaction suite: 12 groups passed.
+- [ ] Assign the real operator account and daily moderation/support responsibility; no app user existed at the configuration check.
+- [ ] Supply the legal operator name and public support/privacy email. [Store disclosure worksheet](STORE_DISCLOSURES.md) is prepared; App Store Connect disclosures and signed SDK manifests still need completion.
+- [ ] Complete real creator upload, sandbox purchase/cancel/refund and creator-account deletion through the hosted app, then physical-device acceptance. Automated provider fixtures do not satisfy these checks.
+
+Full deployment and hosted deletion results are recorded in [the implementation record](COMPLIANCE_IMPLEMENTATION.md).

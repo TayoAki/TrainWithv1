@@ -1,6 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import Stripe from "stripe";
 import { buildApp } from "../src/app.js";
@@ -14,6 +14,7 @@ import { processNext, enqueue, syncSubscription } from "../src/events.js";
 import { ApiError } from "../src/errors.js";
 import type { DB, Row } from "../src/db.js";
 import { checkout } from "../src/billing.js";
+import { processDeletion } from "../src/deletion.js";
 
 const owner = "10000000-0000-4000-8000-000000000001";
 const member = "10000000-0000-4000-8000-000000000002";
@@ -33,6 +34,8 @@ const config = readConfig({
   STRIPE_WEBHOOK_SECRET: "whsec_fixture",
   PLATFORM_FEE_PERCENT: "0",
   ADMIN_USER_IDS: owner,
+  SUPABASE_SERVICE_ROLE_KEY: "test_secret_not_real",
+  IOS_EXTERNAL_CHECKOUT: "true",
 });
 const pg = new PGlite();
 let db: DB;
@@ -52,7 +55,7 @@ let refundedCharge: Row = {
 const real = createProviders(config);
 const providers: Providers = {
   ...real,
-  customer: async () => "cus_member",
+  customer: async (id) => (id === member ? "cus_member" : `cus_${id}`),
   checkout: async () => {
     checkoutRequests++;
     return {
@@ -99,15 +102,11 @@ before(async () => {
   await pg.exec(
     `create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;grant usage on schema auth to anon,authenticated;`,
   );
-  await pg.exec(
-    await readFile(
-      new URL(
-        "../../supabase/migrations/202609190001_trainwith.sql",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
-  );
+  const migrationDir = new URL("../../supabase/migrations/", import.meta.url);
+  for (const name of (await readdir(migrationDir))
+    .filter((n) => n.endsWith(".sql"))
+    .sort())
+    await pg.exec(await readFile(new URL(name, migrationDir), "utf8"));
   const wrap = (q: { query: typeof pg.query }): DB => ({
     query: (sql, values) => q.query(sql, values),
     transaction: (fn) => fn(wrap(q)),
@@ -117,8 +116,13 @@ before(async () => {
     transaction: (fn) =>
       pg.transaction((tx) => fn(wrap(tx as unknown as typeof pg))),
   };
-  for (const u of Object.values(identities))
+  for (const u of Object.values(identities)) {
     await db.query("insert into auth.users values($1)", [u.id]);
+    await db.query(
+      "insert into trainwith.profiles(id,name,adult_confirmed_at,policy_version,age_source) values($1,$2,now(),'2026-09-19','self_declared')",
+      [u.id, u.name],
+    );
+  }
   app = await buildApp(config, db, providers, async (token) => {
     if (!identities[token])
       throw new ApiError(401, "UNAUTHENTICATED", "Invalid session.");
@@ -240,6 +244,17 @@ test("drafts, signed media authorization and unready publish behavior", async ()
     data: { id: "asset_fixture" },
   });
   assert.equal(await processNext(db, providers), true);
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/v1/admin/moderation",
+        headers: headers("owner"),
+        payload: { action: "approve_workout", id: workout.id },
+      })
+    ).statusCode,
+    200,
+  );
   assert.equal(
     (await command("owner", "workout.save", { ...workout, published: true }))
       .statusCode,
@@ -711,4 +726,505 @@ test("database policies prevent direct private reads and all direct client write
       await tx.query("update trainwith.creators set price_cents=1");
     }),
   );
+});
+
+test("age and current policy acceptance are enforced by the API", async () => {
+  await db.query(
+    "update trainwith.profiles set adult_confirmed_at=null,policy_version=null where id=$1",
+    [stranger],
+  );
+  assert.equal(
+    (await command("stranger", "creator.claim", { handle: "underage" }))
+      .statusCode,
+    403,
+  );
+  const accept = (body: unknown) =>
+    app.inject({
+      method: "POST",
+      url: "/v1/policy/accept",
+      headers: headers("stranger"),
+      payload: body as Record<string, unknown>,
+    });
+  assert.equal(
+    (
+      await accept({
+        adult: false,
+        accepted: true,
+        version: "2026-09-19",
+        ageSource: "self_declared",
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await accept({
+        adult: true,
+        accepted: true,
+        version: "old",
+        ageSource: "self_declared",
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await accept({
+        adult: true,
+        accepted: true,
+        version: "2026-09-19",
+        ageSource: "self_declared",
+      })
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await app.inject({ url: "/v1/state", headers: headers("stranger") })
+    ).json().eligibility.accepted,
+    true,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/v1/videos/playback",
+        payload: { workoutId: "workout_fixture" },
+      })
+    ).statusCode,
+    401,
+  );
+});
+
+test("native checkout fails closed outside US iOS and returns only trusted browser destinations", async () => {
+  const id = "10000000-0000-4000-8000-000000000004";
+  identities.iosbuyer = { id, name: "iOS buyer", email: "ios@example.test" };
+  await db.query("insert into auth.users values($1)", [id]);
+  await db.query(
+    "insert into trainwith.profiles(id,name,adult_confirmed_at,policy_version,age_source) values($1,'iOS buyer',now(),'2026-09-19','self_declared')",
+    [id],
+  );
+  const request = (client: unknown) =>
+    app.inject({
+      method: "POST",
+      url: "/v1/billing/checkout",
+      headers: headers("iosbuyer"),
+      payload: { creatorId, client },
+    });
+  for (const client of [
+    { platform: "ios" },
+    { platform: "ios", storefront: "CAN" },
+    { platform: "android", storefront: "USA" },
+  ])
+    assert.equal((await request(client)).statusCode, 403);
+  const result = await request({ platform: "ios", storefront: "USA" });
+  assert.equal(result.statusCode, 200, result.body);
+  const attempt = (
+    await db.query(
+      "select payload from trainwith_private.checkout_attempts where user_id=$1",
+      [id],
+    )
+  ).rows[0].payload as Row;
+  assert.equal(attempt.nativeReturn, true);
+  assert.equal(attempt.appUrl, config.APP_URL);
+  assert.equal(
+    (
+      await request({
+        platform: "ios",
+        storefront: "USA",
+        returnUrl: "https://attacker.invalid",
+      })
+    ).statusCode,
+    400,
+  );
+});
+
+test("blocking hides content in API and RLS, stops playback, and preserves billing management", async () => {
+  await db.query(
+    "update trainwith.workouts set published=true,moderation_status='approved' where id='workout_fixture'",
+  );
+  await db.query(
+    "update trainwith_private.video_assets set status='ready',playback_id='playback_fixture' where workout_id='workout_fixture'",
+  );
+  const block = (blocked: boolean) =>
+    app.inject({
+      method: "POST",
+      url: "/v1/safety/block",
+      headers: headers("stranger"),
+      payload: { creatorId, blocked },
+    });
+  assert.equal((await block(true)).statusCode, 200);
+  const state = (
+    await app.inject({ url: "/v1/state", headers: headers("stranger") })
+  ).json();
+  assert.equal(state.creators.length, 0);
+  assert.equal(state.workouts.length, 0);
+  assert.equal(state.blocked[0].id, creatorId);
+  assert.equal(state.memberships.length, 1);
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/v1/videos/playback",
+        headers: headers("stranger"),
+        payload: { workoutId: "workout_fixture" },
+      })
+    ).statusCode,
+    403,
+  );
+  await db.transaction(async (tx) => {
+    await tx.query("set local role authenticated");
+    await tx.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      stranger,
+    ]);
+    assert.equal(
+      (await tx.query("select * from trainwith.creators")).rows.length,
+      0,
+    );
+  });
+  assert.equal((await block(false)).statusCode, 200);
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/v1/videos/playback",
+        headers: headers("stranger"),
+        payload: { workoutId: "workout_fixture" },
+      })
+    ).statusCode,
+    200,
+  );
+});
+
+test("reports are private and only an operator can review or remove a workout", async () => {
+  const report = await app.inject({
+    method: "POST",
+    url: "/v1/safety/report",
+    headers: headers("member"),
+    payload: {
+      creatorId,
+      workoutId: "workout_fixture",
+      reason: "age_inappropriate",
+      details: "Please review the age suitability of this workout.",
+    },
+  });
+  assert.equal(report.statusCode, 200, report.body);
+  assert.equal(
+    (
+      await app.inject({
+        url: "/v1/admin/moderation",
+        headers: headers("member"),
+      })
+    ).statusCode,
+    403,
+  );
+  const moderation = await app.inject({
+    url: "/v1/admin/moderation",
+    headers: headers("owner"),
+  });
+  assert.ok(
+    moderation.json().reports.some((r: Row) => r.id === report.json().id),
+  );
+  const remove = (token: string) =>
+    app.inject({
+      method: "POST",
+      url: "/v1/admin/moderation",
+      headers: headers(token),
+      payload: { action: "remove_workout", id: "workout_fixture" },
+    });
+  assert.equal((await remove("member")).statusCode, 403);
+  assert.equal((await remove("owner")).statusCode, 200);
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/v1/videos/playback",
+        headers: headers("stranger"),
+        payload: { workoutId: "workout_fixture" },
+      })
+    ).statusCode,
+    403,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/public/contact",
+        payload: {
+          email: "requester@example.test",
+          message: "Please export my account information.",
+        },
+      })
+    ).statusCode,
+    200,
+  );
+});
+
+test("reviewed programs and workout metadata cannot bypass moderation with edits", async () => {
+  await db.query(
+    "update trainwith.workouts set published=true,moderation_status='approved' where id='workout_fixture'",
+  );
+  const program = {
+    id: "program_review",
+    creatorId,
+    title: "Progressive strength",
+    description: "Four weeks of training",
+    weeks: 4,
+    workoutIds: ["workout_fixture"],
+    published: false,
+  };
+  assert.equal(
+    (await command("owner", "program.save", { ...program, published: true }))
+      .statusCode,
+    409,
+  );
+  assert.equal(
+    (await command("owner", "program.save", program)).statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/v1/admin/moderation",
+        headers: headers("owner"),
+        payload: { action: "approve_program", id: program.id },
+      })
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (await command("owner", "program.save", { ...program, published: true }))
+      .statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await command("owner", "program.save", {
+        ...program,
+        description: "Changed instructions",
+        published: true,
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    (
+      await command("owner", "program.save", {
+        ...program,
+        description: "Changed instructions",
+      })
+    ).statusCode,
+    200,
+  );
+  const state = (
+    await app.inject({ url: "/v1/state", headers: headers("owner") })
+  ).json();
+  assert.equal(
+    state.programs.find((p: Row) => p.id === program.id).moderationStatus,
+    "pending",
+  );
+  const workout = state.workouts.find((w: Row) => w.id === "workout_fixture");
+  delete workout.moderationStatus;
+  assert.equal(
+    (
+      await command("owner", "workout.save", {
+        ...workout,
+        equipment: "Changed guidance",
+        published: true,
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    (
+      await command("owner", "workout.save", {
+        ...workout,
+        equipment: "Changed guidance",
+        published: false,
+      })
+    ).statusCode,
+    200,
+  );
+  await db.transaction(async (tx) => {
+    await tx.query("set local role authenticated");
+    await tx.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      member,
+    ]);
+    assert.equal(
+      (
+        await tx.query("select id from trainwith.programs where id=$1", [
+          program.id,
+        ])
+      ).rows.length,
+      0,
+    );
+  });
+});
+
+test("restricted accounts can cancel but cannot resume subscription renewal", async () => {
+  let canceled = false;
+  const cancellationApp = await buildApp(
+    config,
+    db,
+    {
+      ...providers,
+      renewal: async (_id, renews) => {
+        assert.equal(renews, false);
+        canceled = true;
+      },
+    },
+    async () => identities.member,
+  );
+  try {
+    await db.query(
+      "update trainwith.profiles set account_status='suspended',adult_confirmed_at=null where id=$1",
+      [member],
+    );
+    const request = (renews: boolean) =>
+      cancellationApp.inject({
+        method: "POST",
+        url: "/v1/billing/renewal",
+        headers: headers("member"),
+        payload: { creatorId, renews },
+      });
+    assert.equal((await request(true)).statusCode, 403);
+    const result = await request(false);
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(canceled, true);
+  } finally {
+    await db.query(
+      "update trainwith.profiles set account_status='active',adult_confirmed_at=now() where id=$1",
+      [member],
+    );
+    await cancellationApp.close();
+  }
+});
+
+test("deletion reauthenticates, restricts immediately, retries failures, removes data and ignores late events", async () => {
+  const effects: string[] = [];
+  let fail = true;
+  const deleting: Providers = {
+    ...providers,
+    confirmPassword: async (_email, password) => {
+      if (password !== "fixture-password")
+        throw new ApiError(401, "REAUTHENTICATION_FAILED", "Wrong password.");
+    },
+    closeCheckout: async () => {
+      effects.push("checkout_closed");
+    },
+    cancelSubscriptions: async () => {
+      effects.push("subscription_canceled");
+    },
+    deleteCustomer: async () => {
+      effects.push("customer_deleted");
+    },
+    deleteMedia: async () => {
+      effects.push("media_delete_attempt");
+      if (fail) throw new Error("Provider unavailable");
+    },
+    deleteAuthUser: async (id) => {
+      await db.query("delete from auth.users where id=$1", [id]);
+      effects.push("auth_deleted");
+    },
+  };
+  const deletionApp = await buildApp(
+    config,
+    db,
+    deleting,
+    async (token) => identities[token],
+  );
+  try {
+    const submit = (password: string) =>
+      deletionApp.inject({
+        method: "POST",
+        url: "/v1/account/delete",
+        headers: headers("owner"),
+        payload: { confirmation: "DELETE", password },
+      });
+    assert.equal((await submit("wrong")).statusCode, 401);
+    assert.equal(
+      (await db.query("select * from trainwith_private.deletions")).rows.length,
+      0,
+    );
+    const result = await submit("fixture-password");
+    assert.equal(result.statusCode, 200, result.body);
+    const { receipt } = result.json();
+    assert.match(receipt, /^[a-f0-9]{64}$/);
+    assert.equal(
+      (await command("owner", "creator.price", { creatorId, price: 20 }))
+        .statusCode,
+      403,
+    );
+    assert.equal((await app.inject("/v1/state")).json().creators.length, 0);
+    assert.equal(await processDeletion(db, deleting), true);
+    const pending = (
+      await app.inject({
+        method: "POST",
+        url: "/public/deletion-status",
+        payload: { receipt },
+      })
+    ).json();
+    assert.equal(pending.status, "pending");
+    assert.ok(!effects.includes("auth_deleted"));
+    assert.equal(
+      (await db.query("select * from auth.users where id=$1", [owner])).rows
+        .length,
+      1,
+    );
+    fail = false;
+    await db.query("update trainwith_private.deletions set available_at=now()");
+    assert.equal(await processDeletion(db, deleting), true);
+    const complete = (
+      await app.inject({
+        method: "POST",
+        url: "/public/deletion-status",
+        payload: { receipt },
+      })
+    ).json();
+    assert.equal(complete.status, "done");
+    for (const table of [
+      "trainwith.creators",
+      "trainwith.workouts",
+      "trainwith_private.creator_billing",
+      "trainwith_private.video_assets",
+    ])
+      assert.equal((await db.query(`select * from ${table}`)).rows.length, 0);
+    assert.equal(
+      (await db.query("select * from auth.users where id=$1", [owner])).rows
+        .length,
+      0,
+    );
+    assert.ok(effects.includes("subscription_canceled"));
+    assert.ok(effects.includes("checkout_closed"));
+    assert.ok(effects.includes("auth_deleted"));
+    const job = (await db.query("select * from trainwith_private.deletions"))
+      .rows[0];
+    assert.deepEqual(job.payload, {});
+    assert.equal(job.user_id, null);
+    assert.notEqual(job.receipt_hash, receipt);
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/public/deletion-status",
+          payload: { receipt: "0".repeat(64) },
+        })
+      ).statusCode,
+      404,
+    );
+    await syncSubscription(db, providers, "sub_fixture");
+    assert.equal(
+      (await db.query("select * from trainwith_private.subscriptions")).rows
+        .length,
+      0,
+    );
+    assert.equal(
+      (await app.inject({ url: "/v1/state", headers: headers("owner") }))
+        .statusCode,
+      403,
+    );
+  } finally {
+    await deletionApp.close();
+  }
 });
