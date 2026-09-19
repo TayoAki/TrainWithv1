@@ -10,8 +10,11 @@ export type Creator = {
   price: number;
   published: boolean;
   payoutReady: boolean;
+  approved?: boolean;
+  currency?: string;
 };
 export type Workout = {
+  moderationStatus?: "pending" | "approved" | "rejected";
   id: string;
   creatorId: string;
   title: string;
@@ -25,6 +28,7 @@ export type Workout = {
   photo: string;
 };
 export type Program = {
+  moderationStatus?: "pending" | "approved" | "rejected";
   id: string;
   creatorId: string;
   title: string;
@@ -41,6 +45,8 @@ export type Membership = {
   ends: string;
 };
 export type AppState = {
+  eligibility?: { accepted: boolean; status: string; policyVersion: string };
+  blocked?: { id: string; name: string; handle: string; price: number }[];
   version: 1;
   user: { name: string; email: string } | null;
   creators: Creator[];

@@ -1,0 +1,47 @@
+# TrainWith repository audit
+
+Reviewed September 19, 2026. Repository: [TayoAki/TrainWithv1](https://github.com/TayoAki/TrainWithv1). Local clone: `/Users/juniper/TrainWithv1`.
+
+Baseline: `5e1743e0d8090a9a0cfff3ef69ee090c09a3a103`, default branch `claude/epic-bohr-totfie`. This is newer than the Expo ZIP embedded in the Astro site. Scope: source/configuration review, local automated verification, latest GitHub CI inspection, and provider documentation research. No live provider accounts or real-device payment/media flows were audited.
+
+## Findings that block launch
+
+| Area           | Evidence at reviewed commit                                                                                                                                                                                                                          | Consequence / required change                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Authentication | [services.ts:30](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/services.ts#L30): sign-in writes profile fields                                                                                            | No identity verification, recovery, session security, or account-level data separation                                |
+| Persistence    | [store.tsx:7](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/store.tsx#L7): one AsyncStorage key for full state                                                                                            | Local device state cannot serve as a shared database; logout does not isolate/reset all user data                     |
+| Payments       | [services.ts:251](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/services.ts#L251): fake delayed payment result                                                                                            | No money moves, receipts, billing lifecycle, fraud handling, or reconciliation                                        |
+| Access         | [data.ts:168](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/data.ts#L168), [consumer.tsx:644](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/consumer.tsx#L644) | Client grants itself a membership and decides access; backend must authorize premium media                            |
+| Billing dates  | [services.ts:50](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/services.ts#L50)                                                                                                                           | Client clock and `setMonth` are unsuitable for authoritative periods; use provider periods, including month-end cases |
+| Media          | [media.web.ts](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/media.web.ts), [media.ts](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/media.ts)                 | IndexedDB/device files and a 100 MB picker limit; no shared upload/processing/protected streaming pipeline            |
+| Payouts        | [creator.tsx:850](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/creator.tsx#L850)                                                                                                                         | Button toggles readiness; no real connected-account verification, bank payout, or accounting                          |
+| Earnings       | [creator.tsx:281](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/creator.tsx#L281)                                                                                                                         | Sum of locally active prices is not settled revenue or a payable balance                                              |
+| Support        | [consumer.tsx:1101](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/consumer.tsx#L1101)                                                                                                                     | Submission remains on device; no operator receives it                                                                 |
+| Store release  | [app.json](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/app.json)                                                                                                                                            | No permanent iOS bundle ID / Android package or EAS release configuration in the repo                                 |
+| Launch content | [data.ts](https://github.com/TayoAki/TrainWithv1/blob/5e1743e0d8090a9a0cfff3ef69ee090c09a3a103/src/data.ts) and bundled sample video                                                                                                                 | Seed profiles and illustrative prices are not approved coaches or a saleable workout library                          |
+
+The state-transition service layer improves maintainability, but `apply(transition)` is synchronous. Production integration also requires asynchronous state management, loading/error handling, authorization failures, stable server IDs, and cache invalidation. Comments suggesting screens can remain entirely unchanged should not be treated as an effort estimate.
+
+The existing website at `/Users/juniper/FitME` embeds `entry-403dd393cc233d2ab2b7c92316ad2e7c.js` through `src/layouts/AppDemo.astro`. It intentionally labels the experience a demo. Its public coach content and legal pages are illustrative. Replace the embedded export with links to the canonical live application during integration; do not merely remove the demo banner.
+
+## Verification performed
+
+| Check                                                      | Result                                                                                      |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Authenticated GitHub repository access and `gh repo clone` | Passed                                                                                      |
+| `npm ci`                                                   | Passed; installed 904 packages                                                              |
+| `npm run format:check` on baseline                         | Passed                                                                                      |
+| `npm run verify`                                           | Passed: ESLint, TypeScript, 10/10 domain tests                                              |
+| `npm run test:ui`                                          | Passed: production web export and 12/12 JSDOM interaction groups                            |
+| Latest GitHub CI for reviewed SHA                          | Success: [run 35365716714](https://github.com/TayoAki/TrainWithv1/actions/runs/35365716714) |
+| `npm audit --omit=dev`                                     | 13 moderate affected-package entries, zero high/critical; nonzero audit exit status         |
+
+Local checks used Node 22.22.2. Initial installation under the machine's default Node 25.4.0 emitted engine warnings for JSDOM dependencies; pin the supported runtime for repeatable setup. The install's full dependency audit reported 14 moderate entries. The production-dependency audit includes tooling pulled through Expo, so an affected-package count is not a count of independently exploitable app vulnerabilities.
+
+The production-dependency advisories traced to `decode-uri-component` malformed-input denial of service and `uuid` buffer bounds handling, propagating through Expo/router/tooling dependencies. Triage actual reachability and compatible upgrades/overrides. The suggested automatic fixes included major Expo/router downgrades, so no blind `npm audit fix --force` was applied. [URI advisory](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr) · [UUID advisory](https://github.com/advisories/GHSA-w5hq-g745-h8pq)
+
+The baseline `tests/latest-result.json` is dated September 18; the fresh September 19 command executions above and [saved interaction results](interaction-results.json) are the verification basis. JSDOM exercises simulated workflows, not browser layout, real video decoding, native signing, payment processors, payouts, or multi-user backend security. GitHub CI also exports native bundles; those exports are not installed-device tests.
+
+## Audit conclusion
+
+Keep the frontend and its test foundation. Finish a production backend, identity, protected media, billing/ledger, moderation/support, real content, and release operations. The next useful engineering milestone is one working staging purchase-to-play flow, with explicit server authorization and provider-backed access periods.

@@ -3,8 +3,11 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@mux/upchunk": "^3.5.0",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@supabase/supabase-js": "^2.116.0",
     "expo": "~57.0.24",
+    "expo-age-range": "^57.0.5",
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.19",
     "expo-document-picker": "~57.0.2",
@@ -12,6 +15,7 @@
     "expo-image": "~57.0.5",
     "expo-linking": "~57.0.10",
     "expo-router": "~57.0.22",
+    "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "expo-video": "~57.0.4",
     "lucide-react-native": "^1.47.0",
@@ -34,6 +38,7 @@
     "eslint-config-prettier": "^10.1.8",
     "jsdom": "^30.1.0",
     "prettier": "^3.9.8",
+    "railway": "^3.11.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -42,14 +47,17 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "export:web": "expo export --platform web",
+    "export:web": "expo export --clear --platform web",
     "test": "node --test tests/domain.test.mjs",
-    "test:ui": "npm run export:web && node tests/ui-smoke.cjs",
+    "test:ui": "EXPO_PUBLIC_DEMO_MODE=true expo export --clear --platform web && node tests/ui-smoke.cjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "verify": "npm run lint && npm run typecheck && npm test"
+    "verify": "npm run lint && npm run typecheck && npm test",
+    "verify:backend": "npm --prefix backend run build && npm --prefix backend test",
+    "backend:dev": "npm --prefix backend run dev",
+    "test:connected": "EXPO_PUBLIC_DEMO_MODE=false EXPO_PUBLIC_API_URL=http://localhost:3001 EXPO_PUBLIC_SUPABASE_URL=https://example.supabase.co EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_fixture expo export --clear --platform web --output-dir dist-connected && node tests/connected-smoke.cjs"
   },
   "private": true,
   "engines": {

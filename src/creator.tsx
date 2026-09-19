@@ -1,3 +1,8 @@
+import { ConnectedStudioReport } from "./connected-studio";
+import { selectUpload, sendUpload } from "./upload-remote";
+import { demoMode, appWebUrl } from "./backend";
+import { ConnectedPayout } from "./connected-commerce";
+import { ConnectedUpload } from "./connected-upload";
 import React, { useState } from "react";
 import { View, Pressable } from "react-native";
 import { useRouter } from "expo-router";
@@ -136,22 +141,30 @@ export function CreatorHandle() {
         placeholder="samtrains"
         error={issue || err}
       />
-      {!!handle && !issue && <Notice>@{handle} is available.</Notice>}
+      {!!handle && !issue && (
+        <Notice>
+          @{handle} has a valid format. Availability is confirmed when you
+          continue.
+        </Notice>
+      )}
       <Card>
         <T size={12} color={C.muted}>
           YOUR CHANNEL LINK
         </T>
-        <T bold>jointrainwith.com/{handle || "yourhandle"}</T>
+        <T bold>
+          {demoMode ? "jointrainwith.com" : "Your app domain"}/
+          {handle || "yourhandle"}
+        </T>
       </Card>
       <Button
         title="Continue to channel profile"
         disabled={!handle || !!issue}
-        onPress={() => {
+        onPress={async () => {
           if (issue) {
             setErr(issue);
             return;
           }
-          apply(claimHandle(handle, own));
+          if (!(await apply(claimHandle(handle, own)))) return;
           go(router, "creator-profile");
         }}
       />
@@ -225,7 +238,7 @@ export function CreatorProfile() {
       {!!msg && <Notice error>{msg}</Notice>}
       <Button
         title="Save channel profile"
-        onPress={() => {
+        onPress={async () => {
           if (
             !name.trim() ||
             !tagline.trim() ||
@@ -237,15 +250,18 @@ export function CreatorProfile() {
             );
             return;
           }
-          apply(
-            saveChannelProfile(c.id, {
-              name,
-              tagline,
-              bio,
-              category,
-              photo,
-            }),
-          );
+          if (
+            !(await apply(
+              saveChannelProfile(c.id, {
+                name,
+                tagline,
+                bio,
+                category,
+                photo,
+              }),
+            ))
+          )
+            return;
           go(router, "studio");
         }}
       />
@@ -274,11 +290,25 @@ export function Studio() {
           <Badge light>{c.published ? "PUBLISHED" : "GETTING STARTED"}</Badge>
         }
       />
+      {!demoMode && (
+        <Notice>
+          Open Members and Earnings for verified server records. Channel
+          publishing requires TrainWith approval.
+        </Notice>
+      )}
       <Row style={{ flexWrap: "wrap" }}>
         {[
-          [String(members.length), "Active members"],
+          [
+            demoMode ? String(members.length) : "View Members",
+            "Active members",
+          ],
           [String(count), "Published workouts"],
-          [`$${members.reduce((n, m) => n + m.price, 0)}`, "Monthly revenue"],
+          [
+            demoMode
+              ? `$${members.reduce((n, m) => n + m.price, 0)}`
+              : "View Earnings",
+            "Payment records",
+          ],
         ].map(([v, l]) => (
           <Card key={l} style={{ flex: 1, minWidth: 140 }}>
             <T bold size={32}>
@@ -440,28 +470,34 @@ export function Content({ id }: { id?: string }) {
   );
 }
 export function UploadScreen() {
+  return demoMode ? <DemoUploadScreen /> : <ConnectedUpload />;
+}
+function DemoUploadScreen() {
   const { state, apply } = useStore();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  const add = (video: string, title: string) => {
+  const add = async (video: string, title: string) => {
     const c = state.creators.find((c) => c.id === state.ownedId)!;
     const id = uid("workout");
-    apply(
-      saveWorkout({
-        id,
-        creatorId: c.id,
-        title,
-        description: "",
-        minutes: 20,
-        equipment: "Mat",
-        level: "Beginner",
-        free: false,
-        published: false,
-        video,
-        photo: c.photo,
-      }),
-    );
+    if (
+      !(await apply(
+        saveWorkout({
+          id,
+          creatorId: c.id,
+          title,
+          description: "",
+          minutes: 20,
+          equipment: "Mat",
+          level: "Beginner",
+          free: false,
+          published: false,
+          video,
+          photo: c.photo,
+        }),
+      ))
+    )
+      return;
     go(router, "workout-editor", id);
   };
   return (
@@ -520,7 +556,7 @@ export function UploadScreen() {
   );
 }
 export function WorkoutEditor({ id }: { id?: string }) {
-  const { state, apply } = useStore();
+  const { state, apply, refresh } = useStore();
   const router = useRouter();
   const w = state.workouts.find(
     (w) => w.id === id && w.creatorId === state.ownedId,
@@ -545,38 +581,49 @@ export function WorkoutEditor({ id }: { id?: string }) {
         />
       </Shell>
     );
-  const save = (published: boolean) => {
+  const save = async (published: boolean) => {
     if (
       !title.trim() ||
       !description.trim() ||
       !Number.isFinite(Number(minutes)) ||
       Number(minutes) < 1 ||
-      Number(minutes) > 240 ||
-      !video ||
+      Number(minutes) > 180 ||
+      (demoMode && !video) ||
       !equipment.trim()
     ) {
       setMsg(
-        "Add a title, description, equipment, video, and a duration from 1 to 240 minutes.",
+        "Add a title, description, equipment, video, and a duration from 1 to 180 minutes.",
       );
       return;
     }
-    apply(
-      saveWorkout({
-        ...w,
-        title: title.trim(),
-        description: description.trim(),
-        minutes: Number(minutes),
-        equipment: equipment.trim(),
-        level,
-        free: access === "Free sample",
-        published,
-        video,
-      }),
-    );
+    if (
+      !(await apply(
+        saveWorkout({
+          ...w,
+          title: title.trim(),
+          description: description.trim(),
+          minutes: Number(minutes),
+          equipment: equipment.trim(),
+          level,
+          free: access === "Free sample",
+          published,
+          video: demoMode ? video : w.video,
+        }),
+      ))
+    )
+      return;
     go(router, "content");
   };
   return (
     <Shell creator back title="Workout details">
+      {!demoMode && (
+        <Notice>
+          Content review: {w.moderationStatus || "pending"}. Save new or changed
+          content as a draft. After TrainWith approves it, publish it here.
+          Changes to the title, description, access or cover require another
+          review.
+        </Notice>
+      )}
       <Photo uri={w.photo} height={170} />
       <Field label="Workout title" value={title} onChange={setTitle} />
       <Field
@@ -616,6 +663,15 @@ export function WorkoutEditor({ id }: { id?: string }) {
         onPress={async () => {
           setBusy(true);
           try {
+            if (!demoMode) {
+              const selected = await selectUpload();
+              if (selected) {
+                await sendUpload(w.id, selected.file, () => {});
+                await refresh();
+                setMsg("Video uploaded. Refresh after processing finishes.");
+              }
+              return;
+            }
             const f = await pickVideo();
             if (f) {
               setVideo(f.uri);
@@ -632,10 +688,24 @@ export function WorkoutEditor({ id }: { id?: string }) {
           }
         }}
       />
+      {!demoMode && (
+        <>
+          <Notice>
+            {w.video
+              ? "Video is ready."
+              : "Video is missing or processing. You can save a draft while it processes."}
+          </Notice>
+          <Button
+            secondary
+            title="Refresh video status"
+            onPress={() => void refresh()}
+          />
+        </>
+      )}
       {!!msg && <Notice>{msg}</Notice>}
       <Button
         title="Publish workout"
-        disabled={busy}
+        disabled={busy || (!demoMode && !w.video)}
         onPress={() => save(true)}
       />
       <Button
@@ -664,7 +734,7 @@ export function ProgramEditor({ id }: { id?: string }) {
   const ws = state.workouts.filter(
     (w) => w.creatorId === state.ownedId && w.published,
   );
-  const save = (published: boolean) => {
+  const save = async (published: boolean) => {
     if (
       !title.trim() ||
       !desc.trim() ||
@@ -687,7 +757,7 @@ export function ProgramEditor({ id }: { id?: string }) {
       workoutIds: ids,
       published,
     };
-    apply(saveProgram(next));
+    if (!(await apply(saveProgram(next)))) return;
     go(router, "content", "programs");
   };
   return (
@@ -696,6 +766,12 @@ export function ProgramEditor({ id }: { id?: string }) {
         title="A little structure goes a long way."
         description="Arrange a sequence of sessions your members can repeat each week."
       />
+      {!demoMode && (
+        <Notice>
+          Content review: {p?.moderationStatus || "pending"}. Save new or
+          changed program details as a draft for review before publishing.
+        </Notice>
+      )}
       <Field
         label="Program name"
         value={title}
@@ -826,7 +902,7 @@ export function CreatorPrice() {
       {!!msg && <Notice error>{msg}</Notice>}
       <Button
         title="Save monthly price"
-        onPress={() => {
+        onPress={async () => {
           const n = Number(price);
           if (
             !Number.isFinite(n) ||
@@ -839,7 +915,7 @@ export function CreatorPrice() {
             );
             return;
           }
-          apply(setChannelPrice(c.id, n));
+          if (!(await apply(setChannelPrice(c.id, n)))) return;
           go(router, "studio");
         }}
       />
@@ -847,6 +923,9 @@ export function CreatorPrice() {
   );
 }
 export function CreatorPayout() {
+  return demoMode ? <DemoCreatorPayout /> : <ConnectedPayout />;
+}
+function DemoCreatorPayout() {
   const { state, apply } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === state.ownedId)!;
@@ -867,8 +946,8 @@ export function CreatorPayout() {
         </T>
         <Button
           title={c.payoutReady ? "Back to studio" : "Complete payout setup"}
-          onPress={() => {
-            apply(completePayoutSetup(c.id));
+          onPress={async () => {
+            if (!(await apply(completePayoutSetup(c.id)))) return;
             go(router, "studio");
           }}
         />
@@ -923,8 +1002,8 @@ export function CreatorPublish() {
       <Button
         title={c.published ? "View sharing options" : "Publish my channel"}
         disabled={checks.some((x) => !x.ok)}
-        onPress={() => {
-          apply(setChannelPublished(c.id, true));
+        onPress={async () => {
+          if (!(await apply(setChannelPublished(c.id, true)))) return;
           go(router, "creator-share");
         }}
       />
@@ -941,6 +1020,7 @@ export function CreatorShare() {
   const c = state.creators.find((c) => c.id === state.ownedId)!;
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState("");
+  const channelUrl = `${demoMode ? "https://jointrainwith.com" : appWebUrl}/${c.handle}`;
   return (
     <Shell creator back title="Share your channel">
       <View style={{ alignItems: "center", gap: 18, paddingVertical: 24 }}>
@@ -958,14 +1038,12 @@ export function CreatorShare() {
           {c.name}
         </T>
         <T color={C.muted}>@{c.handle}</T>
-        <T>https://jointrainwith.com/{c.handle}</T>
+        <T>{channelUrl}</T>
         <Button
           title={copied ? "Link copied" : "Copy channel link"}
           onPress={async () => {
             try {
-              await Clipboard.setStringAsync(
-                `https://jointrainwith.com/${c.handle}`,
-              );
+              await Clipboard.setStringAsync(channelUrl);
               setCopied(true);
             } catch {
               setErr(
@@ -977,7 +1055,11 @@ export function CreatorShare() {
       </Card>
       {!!err && <Notice error>{err}</Notice>}
       <Notice>
-        This is your channel link. It goes live once the backend is connected.
+        {demoMode
+          ? "This is your demo channel link."
+          : c.published
+            ? "Your published channel is available at this link."
+            : "Your channel will be visible here after approval and publishing."}
       </Notice>
       <Button
         title="Open member view"
@@ -992,6 +1074,9 @@ export function CreatorShare() {
   );
 }
 export function Members() {
+  return demoMode ? <DemoMembers /> : <ConnectedStudioReport kind="members" />;
+}
+function DemoMembers() {
   const { state } = useStore();
   const [q, setQ] = useState("");
   const rows = state.memberships.filter(
@@ -1048,6 +1133,13 @@ export function Members() {
   );
 }
 export function Earnings() {
+  return demoMode ? (
+    <DemoEarnings />
+  ) : (
+    <ConnectedStudioReport kind="earnings" />
+  );
+}
+function DemoEarnings() {
   const { state } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === state.ownedId)!;
@@ -1132,8 +1224,8 @@ export function CreatorSettings() {
             </T>
             <Button
               title="Confirm unpublish"
-              onPress={() => {
-                apply(setChannelPublished(c.id, false));
+              onPress={async () => {
+                if (!(await apply(setChannelPublished(c.id, false)))) return;
                 setConfirm(false);
               }}
             />

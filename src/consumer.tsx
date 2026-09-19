@@ -1,3 +1,12 @@
+import { demoMode, appWebUrl } from "./backend";
+import { ConnectedAuth } from "./connected-auth";
+import {
+  ConnectedMembership,
+  ConnectedJoined,
+  MembershipAction,
+  useCheckoutEligibility,
+} from "./connected-commerce";
+import { SafetyActions, SafetySettings, PolicyLinks } from "./connected-safety";
 import React, { useState } from "react";
 import { View, Pressable, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
@@ -241,13 +250,11 @@ export function Channel({
           secondary
           onPress={async () => {
             try {
-              await Clipboard.setStringAsync(
-                `https://jointrainwith.com/${c.handle}`,
-              );
+              await Clipboard.setStringAsync(`${appWebUrl}/${c.handle}`);
               setCopied(true);
             } catch {
               setShareError(
-                `Copy is unavailable. Your planned channel link is https://jointrainwith.com/${c.handle}`,
+                `Copy is unavailable. Your channel link is ${appWebUrl}/${c.handle}`,
               );
             }
           }}
@@ -313,23 +320,35 @@ export function Channel({
           </T>
           <T>{c.bio}</T>
           <Badge light>{c.category}</Badge>
-          <T size={12} color={C.muted}>
-            Sample coach profile
-          </T>
+          {demoMode && (
+            <T size={12} color={C.muted}>
+              Sample coach profile
+            </T>
+          )}
         </Card>
       )}
+      {!demoMode && !preview && <SafetyActions creatorId={c.id} />}
       {!preview && (
         <>
-          <Button
-            title={
-              active
-                ? "Go to my workouts"
-                : `Join ${c.name.split(" ")[0]} · $${c.price}/month`
-            }
-            onPress={() =>
-              go(router, active ? "my-workouts" : "membership", c.id)
-            }
-          />
+          {!demoMode ? (
+            <MembershipAction
+              creatorId={c.id}
+              name={c.name}
+              price={c.price}
+              active={active}
+            />
+          ) : (
+            <Button
+              title={
+                active
+                  ? "Go to my workouts"
+                  : `Join ${c.name.split(" ")[0]} · $${c.price}/month`
+              }
+              onPress={() =>
+                go(router, active ? "my-workouts" : "membership", c.id)
+              }
+            />
+          )}
           <T size={11} color={C.muted} style={{ textAlign: "center" }}>
             Membership applies to this channel. Cancel renewal anytime.
           </T>
@@ -394,14 +413,22 @@ export function ProgramScreen({ id }: { id?: string }) {
           state.saved.includes(p.id) ? "Saved to my workouts" : "Save program"
         }
         secondary
-        onPress={() => apply(toggleSavedProgram(p.id))}
+        onPress={async () => await apply(toggleSavedProgram(p.id))}
       />
-      {!hasAccess(state, c.id) && (
-        <Button
-          title={`See membership · $${c.price}/month`}
-          onPress={() => go(router, "membership", c.id)}
-        />
-      )}
+      {!hasAccess(state, c.id) &&
+        (!demoMode ? (
+          <MembershipAction
+            creatorId={c.id}
+            name={c.name}
+            price={c.price}
+            active={false}
+          />
+        ) : (
+          <Button
+            title={`See membership · $${c.price}/month`}
+            onPress={() => go(router, "membership", c.id)}
+          />
+        ))}
     </Shell>
   );
 }
@@ -419,7 +446,8 @@ export function WorkoutScreen({ id }: { id?: string }) {
       </Shell>
     );
   const c = state.creators.find((c) => c.id === w.creatorId)!;
-  const allowed = w.free || hasAccess(state, c.id);
+  const allowed =
+    (w.free || hasAccess(state, c.id)) && (demoMode || !!state.user);
   return (
     <Shell back title={w.title}>
       {allowed ? (
@@ -471,16 +499,41 @@ export function WorkoutScreen({ id }: { id?: string }) {
                 ? "View completion"
                 : "Mark workout complete"
             }
-            onPress={() => {
-              apply(completeWorkout(w.id));
+            onPress={async () => {
+              if (!(await apply(completeWorkout(w.id)))) return;
               go(router, "complete", w.id);
             }}
           />
-          {w.free && !hasAccess(state, c.id) && (
+          {w.free &&
+            !hasAccess(state, c.id) &&
+            (!demoMode ? (
+              <MembershipAction
+                creatorId={c.id}
+                name={c.name}
+                price={c.price}
+                active={false}
+              />
+            ) : (
+              <Button
+                title="Explore the membership"
+                secondary
+                onPress={() => go(router, "membership", c.id)}
+              />
+            ))}
+        </>
+      ) : !demoMode ? (
+        <>
+          {!state.user ? (
             <Button
-              title="Explore the membership"
-              secondary
-              onPress={() => go(router, "membership", c.id)}
+              title="Sign in to train"
+              onPress={() => go(router, "auth")}
+            />
+          ) : (
+            <MembershipAction
+              creatorId={c.id}
+              name={c.name}
+              price={c.price}
+              active={false}
             />
           )}
         </>
@@ -496,6 +549,7 @@ export function WorkoutScreen({ id }: { id?: string }) {
           />
         </>
       )}
+      {!demoMode && <SafetyActions creatorId={c.id} workoutId={w.id} />}
     </Shell>
   );
 }
@@ -546,21 +600,24 @@ export function Complete({ id }: { id?: string }) {
       <Button
         title="Undo completion"
         subtle
-        onPress={() => {
-          if (id) apply(clearCompletion(id));
+        onPress={async () => {
+          if (id) if (!(await apply(clearCompletion(id)))) return;
           go(router, "workout", id);
         }}
       />
     </Shell>
   );
 }
-export function Auth({ id }: { id?: string }) {
+export function Auth(props: { id?: string }) {
+  return demoMode ? <DemoAuth {...props} /> : <ConnectedAuth {...props} />;
+}
+function DemoAuth({ id }: { id?: string }) {
   const { state, apply } = useStore();
   const router = useRouter();
   const [name, setName] = useState(state.user?.name || "");
   const [email, setEmail] = useState(state.user?.email || "");
   const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
-  const enter = (demo = false) => {
+  const enter = async (demo = false) => {
     if (!demo) {
       // Point at the field that is wrong rather than one combined message.
       const next = {
@@ -572,13 +629,16 @@ export function Auth({ id }: { id?: string }) {
       setErrors(next);
       if (next.name || next.email) return;
     }
-    apply(
-      signIn(
-        demo
-          ? { name: "Sam Taylor", email: "sam@example.com" }
-          : { name, email },
-      ),
-    );
+    if (
+      !(await apply(
+        signIn(
+          demo
+            ? { name: "Sam Taylor", email: "sam@example.com" }
+            : { name, email },
+        ),
+      ))
+    )
+      return;
     go(
       router,
       id === "creator" ? "creator-start" : id ? "membership" : "profile",
@@ -620,7 +680,14 @@ export function Auth({ id }: { id?: string }) {
     </Shell>
   );
 }
-export function Membership({ id }: { id?: string }) {
+export function Membership(props: { id?: string }) {
+  return demoMode ? (
+    <DemoMembership {...props} />
+  ) : (
+    <ConnectedMembership {...props} />
+  );
+}
+function DemoMembership({ id }: { id?: string }) {
   const { state, apply, payments } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === id);
@@ -641,7 +708,7 @@ export function Membership({ id }: { id?: string }) {
       setError(result.reason);
       return;
     }
-    apply(startMembership(c.id, c.price));
+    if (!(await apply(startMembership(c.id, c.price)))) return;
     go(router, "joined", c.id);
   };
   if (!c)
@@ -735,7 +802,10 @@ export function Membership({ id }: { id?: string }) {
     </Shell>
   );
 }
-export function Joined({ id }: { id?: string }) {
+export function Joined(props: { id?: string }) {
+  return demoMode ? <DemoJoined {...props} /> : <ConnectedJoined {...props} />;
+}
+function DemoJoined({ id }: { id?: string }) {
   const { state } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === id);
@@ -902,6 +972,7 @@ export function Profile() {
           </View>
         </Row>
       </Card>
+      {!demoMode && <PolicyLinks />}
       <View>
         <Item
           title="My memberships"
@@ -938,8 +1009,8 @@ export function Profile() {
         <Button
           title="Sign out"
           subtle
-          onPress={() => {
-            apply(signOut());
+          onPress={async () => {
+            if (!(await apply(signOut()))) return;
             go(router, "discover");
           }}
         />
@@ -955,7 +1026,13 @@ export function Memberships() {
       <Heading title="Your coaches, in one place." />
       {state.memberships.length ? (
         state.memberships.map((m) => {
-          const c = state.creators.find((c) => c.id === m.creatorId)!;
+          const c = state.creators.find((c) => c.id === m.creatorId) ||
+            state.blocked?.find((c) => c.id === m.creatorId) || {
+              id: m.creatorId,
+              name: "Unavailable creator",
+              handle: "",
+              price: m.price,
+            };
           return (
             <Card key={m.creatorId}>
               <Row between>
@@ -1001,8 +1078,24 @@ export function ManageMembership({ id }: { id?: string }) {
   const { state, apply } = useStore();
   const router = useRouter();
   const [confirm, setConfirm] = useState(false);
+  const purchaseAllowed = useCheckoutEligibility();
+  const renewalAllowed =
+    demoMode ||
+    (purchaseAllowed &&
+      state.eligibility?.accepted &&
+      state.eligibility.status === "active");
   const m = state.memberships.find((m) => m.creatorId === id);
-  const c = state.creators.find((c) => c.id === id);
+  const c =
+    state.creators.find((c) => c.id === id) ||
+    state.blocked?.find((c) => c.id === id) ||
+    (m
+      ? {
+          id: m.creatorId,
+          name: "Unavailable creator",
+          handle: "",
+          price: m.price,
+        }
+      : undefined);
   if (!m || !c)
     return (
       <Shell back>
@@ -1024,11 +1117,22 @@ export function ManageMembership({ id }: { id?: string }) {
           : "Your renewal is canceled. You can keep training until"}{" "}
         {new Date(m.ends).toLocaleDateString()}.
       </Notice>
-      {!hasAccess(state, c.id) ? (
-        <Button
-          title="Rejoin this channel"
-          onPress={() => go(router, "membership", c.id)}
-        />
+      {!m.renews && !hasAccess(state, c.id) ? (
+        demoMode ? (
+          <Button
+            title="Rejoin this channel"
+            onPress={() => go(router, "membership", c.id)}
+          />
+        ) : (
+          <MembershipAction
+            creatorId={c.id}
+            name={c.name}
+            price={m.price}
+            active={false}
+          />
+        )
+      ) : !m.renews && !renewalAllowed ? (
+        <Notice>Renewal is canceled.</Notice>
       ) : confirm ? (
         <Card>
           <T bold size={22}>
@@ -1040,8 +1144,8 @@ export function ManageMembership({ id }: { id?: string }) {
           </T>
           <Button
             title="Confirm cancellation"
-            onPress={() => {
-              if (id) apply(setRenewal(id, false));
+            onPress={async () => {
+              if (id) if (!(await apply(setRenewal(id, false)))) return;
               setConfirm(false);
             }}
           />
@@ -1055,9 +1159,9 @@ export function ManageMembership({ id }: { id?: string }) {
         <Button
           title={m.renews ? "Cancel renewal" : "Resume renewal"}
           secondary
-          onPress={() => {
+          onPress={async () => {
             if (m.renews) setConfirm(true);
-            else if (id) apply(setRenewal(id, true));
+            else if (id) if (!(await apply(setRenewal(id, true)))) return;
           }}
         />
       )}
@@ -1086,13 +1190,17 @@ export function EditProfile() {
       {!!msg && <Notice>{msg}</Notice>}
       <Button
         title="Save profile"
-        onPress={() => {
+        onPress={async () => {
           if (!name.trim() || !EMAIL.test(email.trim())) {
             setMsg("Enter your name and a valid email address.");
             return;
           }
-          apply(signIn({ name, email }));
-          setMsg("Profile saved on this device.");
+          if (!(await apply(signIn({ name, email })))) return;
+          setMsg(
+            demoMode
+              ? "Profile saved on this device."
+              : "Profile saved to your account.",
+          );
         }}
       />
     </Shell>
@@ -1109,11 +1217,14 @@ export function Support() {
         <T bold>How do memberships work?</T>
         <T color={C.muted}>
           Each membership unlocks one creator’s published workouts and programs.
-          Free samples are open to everyone.
+          Free samples are available to signed-in adults without a membership.
         </T>
         <T bold>Where is my progress?</T>
         <T color={C.muted}>
-          Open My workouts → History. Your progress is saved on this device.
+          Open My workouts → History.{" "}
+          {demoMode
+            ? "Your progress is saved on this device."
+            : "Your progress is saved to your account."}
         </T>
       </Card>
       <Field
@@ -1125,21 +1236,26 @@ export function Support() {
       />
       {!!msg && <Notice>{msg}</Notice>}
       <Button
-        title="Save request"
+        title={demoMode ? "Save request" : "Submit support request"}
         disabled={message.trim().length < 10}
-        onPress={() => {
-          apply(addSupportRequest(message));
+        onPress={async () => {
+          if (!(await apply(addSupportRequest(message)))) return;
           setMessage("");
-          setMsg("Your request is saved on this device.");
+          setMsg(
+            demoMode
+              ? "Your request is saved on this device."
+              : "Your request is stored for the TrainWith support team. Email replies are not enabled yet.",
+          );
         }}
       />
       <T size={12} color={C.muted}>
-        At least 10 characters. Support delivery will be connected with the
-        backend.
+        {demoMode
+          ? "At least 10 characters. Support delivery will be connected with the backend."
+          : "At least 10 characters. Requests are stored securely for review."}
       </T>
       {state.supports.map((x) => (
         <Card key={x.id}>
-          <Badge light>LOCAL DRAFT</Badge>
+          <Badge light>{demoMode ? "LOCAL DRAFT" : "SUBMITTED"}</Badge>
           <T>{x.message}</T>
         </Card>
       ))}
@@ -1147,6 +1263,9 @@ export function Support() {
   );
 }
 export function AppSettings() {
+  return demoMode ? <DemoAppSettings /> : <SafetySettings />;
+}
+function DemoAppSettings() {
   const { reset } = useStore();
   const router = useRouter();
   const [confirm, setConfirm] = useState(false);

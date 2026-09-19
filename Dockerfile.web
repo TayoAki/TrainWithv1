@@ -1,0 +1,26 @@
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY app.json tsconfig.json ./
+COPY app ./app
+COPY src ./src
+COPY modules ./modules
+COPY assets ./assets
+ARG EXPO_PUBLIC_API_URL
+ARG EXPO_PUBLIC_WEB_URL
+ARG EXPO_PUBLIC_SUPABASE_URL
+ARG EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+ENV EXPO_PUBLIC_DEMO_MODE=false
+RUN test -n "$EXPO_PUBLIC_API_URL" && test -n "$EXPO_PUBLIC_WEB_URL" && \
+    test -n "$EXPO_PUBLIC_SUPABASE_URL" && test -n "$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" && \
+    npx expo export --clear --platform web
+
+FROM caddy:2-alpine
+RUN addgroup -S trainwith && adduser -S -G trainwith trainwith && \
+    chown -R trainwith:trainwith /data /config
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/dist /srv
+USER trainwith
+EXPOSE 8080
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

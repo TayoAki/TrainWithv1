@@ -1,0 +1,18 @@
+{
+  "date": "2026-09-19T18:25:25.006Z",
+  "environment": "JSDOM component interaction tests against the production Expo web bundle; no browser layout or real media playback verification",
+  "passed": [
+    "app mounts and discovery renders",
+    "search, public channel, program details and save",
+    "free workout completion and undo",
+    "failed payment retry, successful membership, unlock and completion",
+    "cancel and resume renewal",
+    "creator onboarding and launch requirements",
+    "create and publish free and paid workouts",
+    "build and publish an ordered program",
+    "pricing, payout setup and channel publishing",
+    "member purchase updates creator members and earnings",
+    "support request stays local",
+    "all workflow changes persist to device storage"
+  ]
+}

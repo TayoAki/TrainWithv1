@@ -7,9 +7,8 @@
  * `src/store.tsx` binds them to local persisted state and exposes them to
  * screens as `apply`.
  *
- * Backend handoff: the screens never build state themselves, so moving to a
- * server means reimplementing the operations below against real endpoints and
- * leaving the screens alone. The two interfaces that must become real first are
+ * Connected mode sends explicit commands to the API and refreshes authoritative
+ * state. The pure transitions below run only in explicitly enabled demo mode. The two interfaces that must become real first are
  * `PaymentGateway` (charges and renewals) and the membership transitions, since
  * `hasAccess` in src/data.ts is a presentation check and not a security
  * boundary — authorization has to move server-side before it protects real
@@ -21,20 +20,23 @@ import type { AppState, Category, Creator, Program, Workout } from "./data.ts";
 import { photos, uid } from "./data.ts";
 
 /** A pure state change. Screens dispatch these; they never write state inline. */
-export type Transition = (state: AppState) => AppState;
+export type Command = { name: string; payload: Record<string, unknown> };
+export type Transition = ((state: AppState) => AppState) & {
+  command?: Command;
+};
 
 /* ------------------------------------------------------------------ account */
 
 export type Profile = { name: string; email: string };
 
-export const signIn =
+const localSignIn =
   (profile: Profile): Transition =>
   (s) => ({
     ...s,
     user: { name: profile.name.trim(), email: profile.email.trim() },
   });
 
-export const signOut = (): Transition => (s) => ({ ...s, user: null });
+const localSignOut = (): Transition => (s) => ({ ...s, user: null });
 
 /* --------------------------------------------------------------- membership */
 
@@ -47,7 +49,7 @@ export const signOut = (): Transition => (s) => ({ ...s, user: null });
  * periods are trivially forged, and renewals need provider webhooks rather
  * than a date the app wrote down.
  */
-export const startMembership =
+const localStartMembership =
   (
     creatorId: string,
     price: number,
@@ -72,7 +74,7 @@ export const startMembership =
   };
 
 /** Cancelling keeps access through the period already paid for. */
-export const setRenewal =
+const localSetRenewal =
   (creatorId: string, renews: boolean): Transition =>
   (s) => ({
     ...s,
@@ -84,7 +86,7 @@ export const setRenewal =
 /* ----------------------------------------------------------------- training */
 
 /** Completion is recorded once per workout; re-completing keeps the first date. */
-export const completeWorkout =
+const localCompleteWorkout =
   (workoutId: string, at: Date = new Date()): Transition =>
   (s) => ({
     ...s,
@@ -94,7 +96,7 @@ export const completeWorkout =
     },
   });
 
-export const clearCompletion =
+const localClearCompletion =
   (workoutId: string): Transition =>
   (s) => {
     const completed = { ...s.completed };
@@ -102,7 +104,7 @@ export const clearCompletion =
     return { ...s, completed };
   };
 
-export const toggleSavedProgram =
+const localToggleSavedProgram =
   (programId: string): Transition =>
   (s) => ({
     ...s,
@@ -113,7 +115,7 @@ export const toggleSavedProgram =
 
 /* ------------------------------------------------------------------ support */
 
-export const addSupportRequest =
+const localAddSupportRequest =
   (message: string, at: Date = new Date()): Transition =>
   (s) => ({
     ...s,
@@ -130,7 +132,7 @@ export const addSupportRequest =
  * The new channel starts unpublished with no price and no payout setup, so it
  * cannot reach Discover until `publishChecks` passes.
  */
-export const claimHandle =
+const localClaimHandle =
   (handle: string, existing?: Creator): Transition =>
   (s) => {
     const id = existing?.id || uid("creator");
@@ -163,7 +165,7 @@ export type ChannelProfile = Pick<
   "name" | "tagline" | "bio" | "category" | "photo"
 >;
 
-export const saveChannelProfile =
+const localSaveChannelProfile =
   (creatorId: string, profile: ChannelProfile): Transition =>
   (s) => ({
     ...s,
@@ -181,14 +183,14 @@ export const saveChannelProfile =
     ),
   });
 
-export const setPrice =
+const localSetPrice =
   (creatorId: string, price: number): Transition =>
   (s) => ({
     ...s,
     creators: s.creators.map((c) => (c.id === creatorId ? { ...c, price } : c)),
   });
 
-export const completePayoutSetup =
+const localCompletePayoutSetup =
   (creatorId: string): Transition =>
   (s) => ({
     ...s,
@@ -197,7 +199,7 @@ export const completePayoutSetup =
     ),
   });
 
-export const setChannelPublished =
+const localSetChannelPublished =
   (creatorId: string, published: boolean): Transition =>
   (s) => ({
     ...s,
@@ -207,14 +209,14 @@ export const setChannelPublished =
   });
 
 /** Upserts by id, so the workout editor saves drafts and edits through one path. */
-export const saveWorkout =
+const localSaveWorkout =
   (workout: Workout): Transition =>
   (s) => ({
     ...s,
     workouts: [...s.workouts.filter((w) => w.id !== workout.id), workout],
   });
 
-export const saveProgram =
+const localSaveProgram =
   (program: Program): Transition =>
   (s) => ({
     ...s,
@@ -262,4 +264,89 @@ export const localPaymentGateway: PaymentGateway = {
       ),
     );
   },
+};
+
+// Demo transitions remain testable; connected mode sends only these explicit commands.
+function action(
+  transition: Transition,
+  name: string,
+  payload: Record<string, unknown>,
+): Transition {
+  return Object.assign(transition, { command: { name, payload } });
+}
+export const signIn = (...args: Parameters<typeof localSignIn>) =>
+  action(localSignIn(...args), "profile.update", { ...args[0] });
+export const signOut = (...args: Parameters<typeof localSignOut>) =>
+  action(localSignOut(...args), "auth.signOut", {});
+export const startMembership = (
+  ...args: Parameters<typeof localStartMembership>
+) =>
+  action(localStartMembership(...args), "membership.demoOnly", {
+    creatorId: args[0],
+  });
+export const setRenewal = (...args: Parameters<typeof localSetRenewal>) =>
+  action(localSetRenewal(...args), "membership.renewal", {
+    creatorId: args[0],
+    renews: args[1],
+  });
+export const completeWorkout = (
+  ...args: Parameters<typeof localCompleteWorkout>
+) =>
+  action(localCompleteWorkout(...args), "workout.complete", {
+    workoutId: args[0],
+  });
+export const clearCompletion = (
+  ...args: Parameters<typeof localClearCompletion>
+) =>
+  action(localClearCompletion(...args), "workout.clear", {
+    workoutId: args[0],
+  });
+export const toggleSavedProgram = (
+  ...args: Parameters<typeof localToggleSavedProgram>
+) =>
+  action(localToggleSavedProgram(...args), "program.saveToggle", {
+    programId: args[0],
+  });
+export const addSupportRequest = (
+  ...args: Parameters<typeof localAddSupportRequest>
+) =>
+  action(localAddSupportRequest(...args), "support.create", {
+    message: args[0],
+  });
+export const claimHandle = (...args: Parameters<typeof localClaimHandle>) =>
+  action(localClaimHandle(...args), "creator.claim", { handle: args[0] });
+export const saveChannelProfile = (
+  ...args: Parameters<typeof localSaveChannelProfile>
+) =>
+  action(localSaveChannelProfile(...args), "creator.profile", {
+    creatorId: args[0],
+    ...args[1],
+  });
+export const setPrice = (...args: Parameters<typeof localSetPrice>) =>
+  action(localSetPrice(...args), "creator.price", {
+    creatorId: args[0],
+    price: args[1],
+  });
+export const completePayoutSetup = (
+  ...args: Parameters<typeof localCompletePayoutSetup>
+) =>
+  action(localCompletePayoutSetup(...args), "payout.demoOnly", {
+    creatorId: args[0],
+  });
+export const setChannelPublished = (
+  ...args: Parameters<typeof localSetChannelPublished>
+) =>
+  action(localSetChannelPublished(...args), "creator.publish", {
+    creatorId: args[0],
+    published: args[1],
+  });
+export const saveWorkout = (...args: Parameters<typeof localSaveWorkout>) => {
+  const payload = { ...args[0] };
+  delete payload.moderationStatus;
+  return action(localSaveWorkout(...args), "workout.save", payload);
+};
+export const saveProgram = (...args: Parameters<typeof localSaveProgram>) => {
+  const payload = { ...args[0] };
+  delete payload.moderationStatus;
+  return action(localSaveProgram(...args), "program.save", payload);
 };

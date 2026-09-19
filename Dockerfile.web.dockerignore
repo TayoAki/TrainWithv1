@@ -1,0 +1,12 @@
+**/node_modules
+**/dist*
+**/.env*
+**/*.pem
+**/*.key
+.git
+.expo
+backend
+archive
+docs
+tests
+supabase
