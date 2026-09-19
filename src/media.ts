@@ -1,3 +1,4 @@
+import { api, demoMode } from "./backend";
 import * as DocumentPicker from "expo-document-picker";
 import { File, Paths } from "expo-file-system";
 export async function pickVideo(): Promise<{
@@ -21,5 +22,11 @@ export async function pickVideo(): Promise<{
   return { uri: dest.uri, name: asset.name };
 }
 export async function resolveVideo(uri: string) {
+  if (!demoMode && uri.startsWith("trainwith:workout:"))
+    return (
+      await api<{ url: string }>("/v1/videos/playback", {
+        workoutId: uri.slice("trainwith:workout:".length),
+      })
+    ).url;
   return uri;
 }

@@ -227,6 +227,7 @@ export function Field({
   keyboardType = "default",
   error,
   editable = true,
+  secureTextEntry = false,
 }: {
   label: string;
   value: string;
@@ -236,6 +237,7 @@ export function Field({
   keyboardType?: KeyboardTypeOptions;
   error?: string;
   editable?: boolean;
+  secureTextEntry?: boolean;
 }) {
   return (
     <View style={{ gap: 7 }}>
@@ -254,6 +256,8 @@ export function Field({
         keyboardType={keyboardType}
         autoCapitalize={keyboardType === "email-address" ? "none" : "sentences"}
         editable={editable}
+        secureTextEntry={secureTextEntry}
+        autoCorrect={!secureTextEntry}
         style={{
           borderWidth: 1,
           borderColor: error ? C.red : C.line,

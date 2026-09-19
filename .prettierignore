@@ -1,6 +1,10 @@
 node_modules/
 dist/
 dist-native/
+dist-connected/
 .expo/
 package-lock.json
 assets/
+backend/node_modules/
+backend/dist/
+backend/package-lock.json

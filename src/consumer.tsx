@@ -1,3 +1,6 @@
+import { demoMode } from "./backend";
+import { ConnectedAuth } from "./connected-auth";
+import { ConnectedMembership, ConnectedJoined } from "./connected-commerce";
 import React, { useState } from "react";
 import { View, Pressable, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
@@ -394,7 +397,7 @@ export function ProgramScreen({ id }: { id?: string }) {
           state.saved.includes(p.id) ? "Saved to my workouts" : "Save program"
         }
         secondary
-        onPress={() => apply(toggleSavedProgram(p.id))}
+        onPress={async () => await apply(toggleSavedProgram(p.id))}
       />
       {!hasAccess(state, c.id) && (
         <Button
@@ -471,8 +474,8 @@ export function WorkoutScreen({ id }: { id?: string }) {
                 ? "View completion"
                 : "Mark workout complete"
             }
-            onPress={() => {
-              apply(completeWorkout(w.id));
+            onPress={async () => {
+              if (!(await apply(completeWorkout(w.id)))) return;
               go(router, "complete", w.id);
             }}
           />
@@ -546,21 +549,24 @@ export function Complete({ id }: { id?: string }) {
       <Button
         title="Undo completion"
         subtle
-        onPress={() => {
-          if (id) apply(clearCompletion(id));
+        onPress={async () => {
+          if (id) if (!(await apply(clearCompletion(id)))) return;
           go(router, "workout", id);
         }}
       />
     </Shell>
   );
 }
-export function Auth({ id }: { id?: string }) {
+export function Auth(props: { id?: string }) {
+  return demoMode ? <DemoAuth {...props} /> : <ConnectedAuth {...props} />;
+}
+function DemoAuth({ id }: { id?: string }) {
   const { state, apply } = useStore();
   const router = useRouter();
   const [name, setName] = useState(state.user?.name || "");
   const [email, setEmail] = useState(state.user?.email || "");
   const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
-  const enter = (demo = false) => {
+  const enter = async (demo = false) => {
     if (!demo) {
       // Point at the field that is wrong rather than one combined message.
       const next = {
@@ -572,13 +578,16 @@ export function Auth({ id }: { id?: string }) {
       setErrors(next);
       if (next.name || next.email) return;
     }
-    apply(
-      signIn(
-        demo
-          ? { name: "Sam Taylor", email: "sam@example.com" }
-          : { name, email },
-      ),
-    );
+    if (
+      !(await apply(
+        signIn(
+          demo
+            ? { name: "Sam Taylor", email: "sam@example.com" }
+            : { name, email },
+        ),
+      ))
+    )
+      return;
     go(
       router,
       id === "creator" ? "creator-start" : id ? "membership" : "profile",
@@ -620,7 +629,14 @@ export function Auth({ id }: { id?: string }) {
     </Shell>
   );
 }
-export function Membership({ id }: { id?: string }) {
+export function Membership(props: { id?: string }) {
+  return demoMode ? (
+    <DemoMembership {...props} />
+  ) : (
+    <ConnectedMembership {...props} />
+  );
+}
+function DemoMembership({ id }: { id?: string }) {
   const { state, apply, payments } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === id);
@@ -641,7 +657,7 @@ export function Membership({ id }: { id?: string }) {
       setError(result.reason);
       return;
     }
-    apply(startMembership(c.id, c.price));
+    if (!(await apply(startMembership(c.id, c.price)))) return;
     go(router, "joined", c.id);
   };
   if (!c)
@@ -735,7 +751,10 @@ export function Membership({ id }: { id?: string }) {
     </Shell>
   );
 }
-export function Joined({ id }: { id?: string }) {
+export function Joined(props: { id?: string }) {
+  return demoMode ? <DemoJoined {...props} /> : <ConnectedJoined {...props} />;
+}
+function DemoJoined({ id }: { id?: string }) {
   const { state } = useStore();
   const router = useRouter();
   const c = state.creators.find((c) => c.id === id);
@@ -938,8 +957,8 @@ export function Profile() {
         <Button
           title="Sign out"
           subtle
-          onPress={() => {
-            apply(signOut());
+          onPress={async () => {
+            if (!(await apply(signOut()))) return;
             go(router, "discover");
           }}
         />
@@ -1040,8 +1059,8 @@ export function ManageMembership({ id }: { id?: string }) {
           </T>
           <Button
             title="Confirm cancellation"
-            onPress={() => {
-              if (id) apply(setRenewal(id, false));
+            onPress={async () => {
+              if (id) if (!(await apply(setRenewal(id, false)))) return;
               setConfirm(false);
             }}
           />
@@ -1055,9 +1074,9 @@ export function ManageMembership({ id }: { id?: string }) {
         <Button
           title={m.renews ? "Cancel renewal" : "Resume renewal"}
           secondary
-          onPress={() => {
+          onPress={async () => {
             if (m.renews) setConfirm(true);
-            else if (id) apply(setRenewal(id, true));
+            else if (id) if (!(await apply(setRenewal(id, true)))) return;
           }}
         />
       )}
@@ -1086,13 +1105,17 @@ export function EditProfile() {
       {!!msg && <Notice>{msg}</Notice>}
       <Button
         title="Save profile"
-        onPress={() => {
+        onPress={async () => {
           if (!name.trim() || !EMAIL.test(email.trim())) {
             setMsg("Enter your name and a valid email address.");
             return;
           }
-          apply(signIn({ name, email }));
-          setMsg("Profile saved on this device.");
+          if (!(await apply(signIn({ name, email })))) return;
+          setMsg(
+            demoMode
+              ? "Profile saved on this device."
+              : "Profile saved to your account.",
+          );
         }}
       />
     </Shell>
@@ -1113,7 +1136,10 @@ export function Support() {
         </T>
         <T bold>Where is my progress?</T>
         <T color={C.muted}>
-          Open My workouts → History. Your progress is saved on this device.
+          Open My workouts → History.{" "}
+          {demoMode
+            ? "Your progress is saved on this device."
+            : "Your progress is saved to your account."}
         </T>
       </Card>
       <Field
@@ -1125,21 +1151,26 @@ export function Support() {
       />
       {!!msg && <Notice>{msg}</Notice>}
       <Button
-        title="Save request"
+        title={demoMode ? "Save request" : "Submit support request"}
         disabled={message.trim().length < 10}
-        onPress={() => {
-          apply(addSupportRequest(message));
+        onPress={async () => {
+          if (!(await apply(addSupportRequest(message)))) return;
           setMessage("");
-          setMsg("Your request is saved on this device.");
+          setMsg(
+            demoMode
+              ? "Your request is saved on this device."
+              : "Your request is stored for the TrainWith support team. Email replies are not enabled yet.",
+          );
         }}
       />
       <T size={12} color={C.muted}>
-        At least 10 characters. Support delivery will be connected with the
-        backend.
+        {demoMode
+          ? "At least 10 characters. Support delivery will be connected with the backend."
+          : "At least 10 characters. Requests are stored securely for review."}
       </T>
       {state.supports.map((x) => (
         <Card key={x.id}>
-          <Badge light>LOCAL DRAFT</Badge>
+          <Badge light>{demoMode ? "LOCAL DRAFT" : "SUBMITTED"}</Badge>
           <T>{x.message}</T>
         </Card>
       ))}
@@ -1147,6 +1178,25 @@ export function Support() {
   );
 }
 export function AppSettings() {
+  return demoMode ? <DemoAppSettings /> : <ConnectedSettings />;
+}
+function ConnectedSettings() {
+  const { refresh } = useStore();
+  return (
+    <Shell back title="Settings">
+      <Heading
+        title="Your TrainWith account"
+        description="Your profile and training records are stored securely in TrainWith."
+      />
+      <Notice>
+        For account deletion or a data export, submit a support request. This
+        beta uses manual review.
+      </Notice>
+      <Button title="Refresh account data" onPress={() => void refresh()} />
+    </Shell>
+  );
+}
+function DemoAppSettings() {
   const { reset } = useStore();
   const router = useRouter();
   const [confirm, setConfirm] = useState(false);

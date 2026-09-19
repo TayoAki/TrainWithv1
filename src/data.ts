@@ -10,6 +10,8 @@ export type Creator = {
   price: number;
   published: boolean;
   payoutReady: boolean;
+  approved?: boolean;
+  currency?: string;
 };
 export type Workout = {
   id: string;

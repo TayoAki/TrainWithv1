@@ -9,6 +9,12 @@ import { Notice, Button, C, T } from "./ui";
 export function WorkoutPlayer({ uri, photo }: { uri: string; photo: string }) {
   const [source, setSource] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const retry = () => {
+    setSource(null);
+    setError("");
+    setAttempt((n) => n + 1);
+  };
   useEffect(() => {
     let active = true;
     let resolved = "";
@@ -24,13 +30,16 @@ export function WorkoutPlayer({ uri, photo }: { uri: string; photo: string }) {
       active = false;
       if (resolved.startsWith("blob:")) URL.revokeObjectURL(resolved);
     };
-  }, [uri]);
+  }, [uri, attempt]);
   return (
     <View style={{ gap: 10 }}>
       {error ? (
-        <Notice error>{error}</Notice>
+        <>
+          <Notice error>{error}</Notice>
+          <Button secondary title="Retry video" onPress={retry} />
+        </>
       ) : source ? (
-        <Player key={source} uri={source} />
+        <Player key={`${source}:${attempt}`} uri={source} retry={retry} />
       ) : (
         <Notice>Preparing video…</Notice>
       )}
@@ -43,7 +52,7 @@ export function WorkoutPlayer({ uri, photo }: { uri: string; photo: string }) {
     </View>
   );
 }
-function Player({ uri }: { uri: string }) {
+function Player({ uri, retry }: { uri: string; retry: () => void }) {
   const source =
     uri === SAMPLE_VIDEO ? require("../assets/demo-session.mp4") : uri;
   const player = useVideoPlayer(source, (p) => {
@@ -79,11 +88,7 @@ function Player({ uri }: { uri: string }) {
             This video could not load. Check your connection or select another
             file in Creator Studio.
           </Notice>
-          <Button
-            title="Retry video"
-            secondary
-            onPress={() => player.replaceAsync(source)}
-          />
+          <Button title="Retry video" secondary onPress={retry} />
         </>
       )}
     </View>

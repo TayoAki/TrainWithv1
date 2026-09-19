@@ -1,3 +1,4 @@
+import { api, demoMode } from "./backend";
 import * as DocumentPicker from "expo-document-picker";
 function db(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -32,6 +33,12 @@ export async function pickVideo(): Promise<{
   return { uri: key, name: a.name };
 }
 export async function resolveVideo(uri: string) {
+  if (!demoMode && uri.startsWith("trainwith:workout:"))
+    return (
+      await api<{ url: string }>("/v1/videos/playback", {
+        workoutId: uri.slice("trainwith:workout:".length),
+      })
+    ).url;
   if (!uri.startsWith("media:")) return uri;
   const d = await db();
   const blob = await new Promise<Blob>((resolve, reject) => {
