@@ -21,7 +21,7 @@
       "bundler": "metro",
       "output": "single"
     },
-    "plugins": ["expo-router", "expo-video"],
+    "plugins": ["expo-router", "expo-video", "expo-secure-store"],
     "scheme": "trainwith"
   }
 }

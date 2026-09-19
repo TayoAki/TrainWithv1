@@ -9,8 +9,11 @@ module.exports = [
   {
     ignores: [
       "node_modules/**",
+      "backend/**",
+      ".railway/**",
       "dist/**",
       "dist-native/**",
+      "dist-connected/**",
       ".expo/**",
       "expo-env.d.ts",
     ],
