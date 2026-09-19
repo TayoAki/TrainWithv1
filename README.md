@@ -2,7 +2,7 @@
 
 Expo SDK 57 app with a Fastify API, Supabase authentication/PostgreSQL, Stripe sandbox memberships and Connect onboarding, and Mux upload/signed-playback integration.
 
-This branch implements a connected sandbox beta. The hosted API is pending database credentials and provider configuration. Native purchases and live Stripe payments are disabled. See [backend setup and current status](docs/setup/BACKEND.md) for the remaining steps.
+This branch implements a connected sandbox beta, deployed at [the TrainWith preview](https://web-staging-ff99.up.railway.app). The hosted API connects to Supabase, Mux Video and Stripe sandbox. A real Mux upload, webhook delivery and protected playback have been verified. Native purchases and live Stripe payments are disabled. See [backend setup and current status](docs/setup/BACKEND.md) for admin setup, public auth email delivery and the remaining acceptance checks.
 
 ## Run connected development
 
@@ -47,7 +47,7 @@ Clean Metro caches when switching public environment values: they are compiled i
 - `backend/src/`: API, verified authentication, server authorization, billing and durable webhook worker.
 - `supabase/migrations/`: application and private database schemas with RLS.
 - `backend/tests/`: PostgreSQL/API integration tests.
-- `Dockerfile`, `.railway/railway.ts`: Railway API build and infrastructure.
+- `Dockerfile`, `Dockerfile.web`, `deploy/Caddyfile`, `.railway/railway.ts`: Railway API/web builds and infrastructure.
 - `docs/setup/BACKEND.md`: credentials, operational runbook, API map and remaining launch work.
 - `docs/launch/`: the pre-implementation launch audit and plan; historical baseline.
 

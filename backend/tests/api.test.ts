@@ -635,6 +635,59 @@ test("support is private, admin routes are restricted, native billing fails clos
     503,
   );
 });
+test("Mux deletion unpublishes only the matching asset without retrieving deleted media", async () => {
+  const noAssetFetch: Providers = {
+    ...providers,
+    asset: async () => {
+      throw new Error("Deleted media must not be retrieved");
+    },
+  };
+  const current = (
+    await db.query(
+      "select asset_id from trainwith_private.video_assets where workout_id='workout_fixture'",
+    )
+  ).rows[0];
+  for (const [eventId, assetId] of [
+    ["mux_deleted_old", "replaced_asset"],
+    ["mux_deleted_current", String(current.asset_id)],
+  ]) {
+    await enqueue(db, "mux", {
+      id: eventId,
+      type: "video.asset.deleted",
+      data: { id: assetId },
+    });
+    await processNext(db, noAssetFetch);
+    assert.equal(
+      (
+        await db.query(
+          "select status from trainwith_private.events where id=$1",
+          [eventId],
+        )
+      ).rows[0].status,
+      "done",
+    );
+    const video = (
+      await db.query(
+        "select status,playback_id from trainwith_private.video_assets where workout_id='workout_fixture'",
+      )
+    ).rows[0];
+    assert.equal(
+      video.status,
+      eventId === "mux_deleted_old" ? "ready" : "errored",
+    );
+    if (eventId === "mux_deleted_current") {
+      assert.equal(video.playback_id, null);
+      assert.equal(
+        (
+          await db.query(
+            "select published from trainwith.workouts where id='workout_fixture'",
+          )
+        ).rows[0].published,
+        false,
+      );
+    }
+  }
+});
 test("database policies prevent direct private reads and all direct client writes", async () => {
   await db.transaction(async (tx) => {
     await tx.query("set local role authenticated");

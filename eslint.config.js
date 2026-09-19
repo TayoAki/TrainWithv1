@@ -16,6 +16,7 @@ module.exports = [
       "dist-connected/**",
       ".expo/**",
       "expo-env.d.ts",
+      "**/*.dockerignore",
     ],
   },
   {

@@ -20,6 +20,7 @@ const schema = z.object({
   STRIPE_SECRET_KEY: optional,
   STRIPE_WEBHOOK_SECRET: optional,
   STRIPE_CONNECT_WEBHOOK_SECRET: optional,
+  STRIPE_PORTAL_CONFIGURATION_ID: optional,
   PLATFORM_FEE_PERCENT: optional,
   CONNECT_COUNTRY: z
     .string()

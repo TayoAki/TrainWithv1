@@ -238,6 +238,22 @@ async function stripeEvent(db: DB, p: Providers, e: ProviderEvent) {
 }
 async function muxEvent(db: DB, p: Providers, e: ProviderEvent) {
   const d = e.data;
+  if (e.type === "video.asset.deleted") {
+    // Deleted assets cannot be fetched from Mux. Match the current asset only,
+    // so a late deletion for an older upload cannot unpublish its replacement.
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `with deleted as (
+          update trainwith_private.video_assets
+          set status='errored',playback_id=null,updated_at=now()
+          where asset_id=$1 returning workout_id
+        ) update trainwith.workouts set published=false
+          where id in (select workout_id from deleted)`,
+        [d.id],
+      );
+    });
+    return;
+  }
   if (e.type === "video.upload.asset_created") {
     await db.query(
       "update trainwith_private.video_assets set asset_id=$1,status='processing',updated_at=now() where upload_id=$2 and status in ('waiting','processing')",

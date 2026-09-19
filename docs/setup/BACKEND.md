@@ -1,6 +1,6 @@
 # TrainWith backend setup
 
-Status: 19 September 2026. Implemented for a connected sandbox beta. The Supabase schema is installed and Railway is prepared; the hosted API and production billing are **not live**.
+Status: 19 September 2026. The connected sandbox beta is deployed to Railway. Supabase, Mux Video and Stripe sandbox configuration are installed. Production billing and native purchases are **not live**.
 
 ## Implemented
 
@@ -12,34 +12,35 @@ Status: 19 September 2026. Implemented for a connected sandbox beta. The Supabas
 - Connected Expo screens by default; explicit demo mode for the original prototype. Native sessions use SecureStore; browser sessions stay in memory, so browser reloads require signing in again.
 - Server-backed creator members/earnings and private support storage. Payment totals are not presented as withdrawable funds. Resend and Sentry are paused.
 
-## Railway already prepared
+## Railway staging
 
 | Item                | Value                                                                         |
 | ------------------- | ----------------------------------------------------------------------------- |
 | Project             | [TrainWith](https://railway.com/project/c5175ac7-0da8-4a7d-90cf-560b944fc091) |
 | Environment/service | `staging` / `api`                                                             |
-| Reserved hostname   | `https://api-staging-4654.up.railway.app`                                     |
+| API                 | `https://api-staging-4654.up.railway.app`                                     |
+| Web preview         | [Open TrainWith](https://web-staging-ff99.up.railway.app)                     |
+| Web service         | `web`, `Dockerfile.web`, static Expo export served by Caddy on port 8080      |
 | Readiness           | `/readyz` checks PostgreSQL schema; `/healthz` checks process                 |
 | Build               | Root `Dockerfile`, Node 22, non-root runtime                                  |
 | Infrastructure      | `.railway/railway.ts`, applied to staging                                     |
 
-Supabase URL/public key, the verified database connection and CA certificate, Stripe sandbox secret, port, worker flag and a **0% sandbox platform fee** are saved as staging variables. This fee is a test setting, not an agreed commercial fee. Production has no credentials or deployment.
+Supabase URL/public key, the verified database connection and CA certificate, Stripe sandbox secret and webhook secrets, the TrainWith billing portal configuration, Mux Video/signing/webhook credentials, exact HTTPS frontend origin, port, worker flag and a **0% sandbox platform fee** are saved as staging variables. This fee is a test setting, not an agreed commercial fee. Production has no credentials or deployment. The web service receives only public configuration; demo mode is disabled. Supabase Auth's site URL and allowed return URL point to the web preview.
 
-The reserved hostname is not a working API yet. Migration `202609190001_trainwith.sql` was applied transactionally through the authenticated Supabase SQL editor. An independent query confirmed all **17 application tables have RLS enabled**. The supplied temporary database password is verified, and the database connection and Supabase CA are configured locally and on Railway staging. Certificate and hostname verification remain enabled. The migration checksum matches the repository. Local API checks against the real database return 200 for `/readyz` and `/v1/state`. The API still needs its HTTPS frontend URL and provider setup before deployment. `/readyz` prevents a disconnected API from passing deployment readiness.
+Migration `202609190001_trainwith.sql` was applied transactionally through the authenticated Supabase SQL editor. An independent query confirmed all **17 application tables have RLS enabled**. The supplied temporary database password is verified, and the database connection and Supabase CA are configured locally and on Railway staging. Certificate and hostname verification remain enabled. The migration checksum matches the repository. Hosted `/readyz` and `/v1/state` return 200. `/readyz` prevents a disconnected API from passing deployment readiness.
 
-Railway infrastructure changes require `railway config plan` followed by a reviewed `railway config apply`. Railway does not automatically read `.railway/` during app deployments. The root Dockerfile is auto-detected. See [Railway's IaC guide](https://docs.railway.com/infrastructure-as-code).
+Mux uses the **trainwith** environment (`fdqldb`), with a Video-only read/write token named `TrainWith Railway staging`, a playback signing key and a webhook at the API's `/webhooks/mux` path. A real three-second upload processed successfully. Signed HLS playback returned 200, unsigned playback returned 403, and real Mux notifications reached the Railway worker and completed. This provider test does not yet prove a signed-in coach/member journey. Asset deletion now unpublishes only the matching workout and clears its playback ID; stale deletion events leave replacement assets untouched.
+
+Stripe platform and Connect webhook destinations use `2026-04-22.dahlia`, an existing version in this account. Stripe rejected an additional unique test webhook version because the account is at its version limit. The backend fetches authoritative objects using its SDK version (`2026-08-26.dahlia`). The TrainWith portal permits payment-method changes and end-of-period cancellation, with subscription price changes disabled. Live hosted signature checks use synthetic events; an actual sandbox purchase/renewal/refund journey is still required.
+
+Railway infrastructure changes require `railway config plan` followed by a reviewed `railway config apply`. Railway does not automatically read `.railway/` during app deployments. Existing variables are declared with `preserve()` so applying infrastructure does not delete separately configured secrets. Add new variable names to this list before applying another plan. The API uses the root Dockerfile; web sets `RAILWAY_DOCKERFILE_PATH=Dockerfile.web`. See [Railway's IaC guide](https://docs.railway.com/infrastructure-as-code).
 
 ## Inputs still required
 
-| Input                                           | Purpose and location                                                            |
-| ----------------------------------------------- | ------------------------------------------------------------------------------- |
-| `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`              | Backend/Railway; Video API upload and asset access                              |
-| `MUX_SIGNING_KEY_ID`, `MUX_SIGNING_PRIVATE_KEY` | Backend/Railway; signed playback                                                |
-| `MUX_WEBHOOK_SECRET`                            | Backend/Railway after creating the Mux webhook destination                      |
-| `STRIPE_WEBHOOK_SECRET`                         | Backend/Railway after creating the account webhook destination                  |
-| `STRIPE_CONNECT_WEBHOOK_SECRET`                 | Backend/Railway after creating the connected-account event destination          |
-| `APP_URL`, `ALLOWED_ORIGINS`                    | Actual HTTPS Expo web-app URL; provider return URLs and allowed browser origins |
-| `ADMIN_USER_IDS`                                | Supabase Auth UUIDs of operators who may approve channels and read support      |
+| Input                     | Purpose and location                                                          |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `ADMIN_USER_IDS`          | Supabase Auth UUIDs of operators who may approve channels and read support    |
+| Public auth mail provider | Supabase's default email delivery restricts recipients; Resend remains paused |
 
 The DB file uses the observed Supabase session pooler host for this project. TLS certificate verification remains enabled; use `DATABASE_CA_CERT` if the provider requires its project CA. Never disable certificate verification.
 
@@ -51,11 +52,11 @@ Secrets are excluded from Git and Docker. Configure Railway secrets through its 
 
 1. The initial schema and database credentials are configured. Use `npm --prefix backend run migrate` for future migrations. Migrations are transactional and checksum-tracked, and do not modify existing `public` tables. Never edit a migration after it is applied. When rotating the database password, update the ignored local database file and Railway `DATABASE_URL` together. Before production, create a restricted API database role and keep the administrative migration credential separate.
 2. Set `APP_URL` and exact `ALLOWED_ORIGINS` to the deployed Expo app, and `NODE_ENV=production`. Hosted mode requires HTTPS. Local development uses ports 3001 (API) and 8081 (Expo).
-3. Configure Mux Video credentials, a playback signing key and webhook destination `https://api-staging-4654.up.railway.app/webhooks/mux`. Subscribe to upload asset-created and asset ready/errored events. Save its webhook secret.
-4. Create sandbox Stripe destinations at `https://api-staging-4654.up.railway.app/webhooks/stripe`. Account events: `checkout.session.completed`, `customer.subscription.created/updated/deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `charge.dispute.created/updated/closed`. Connected-account events: `account.updated`, `payout.created/updated/paid/failed/canceled`. Save each destination's signing secret. Configure the billing portal for cancellation and payment-method changes, without arbitrary subscription price changes.
+3. Mux Video credentials, playback signing and webhook destination `https://api-staging-4654.up.railway.app/webhooks/mux` are configured. Keep provider secrets in the API service only.
+4. Sandbox Stripe destinations at `https://api-staging-4654.up.railway.app/webhooks/stripe` are configured. Account events: `checkout.session.completed`, `customer.subscription.created/updated/deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `charge.dispute.created/updated/closed`. Connected-account events: `account.updated`, `payout.created/updated/paid/failed/canceled`. `STRIPE_PORTAL_CONFIGURATION_ID` selects TrainWith's portal explicitly.
 5. Deploy from the repo root: `railway up --service api --environment staging --detach`. Verify `/readyz`, `/v1/state` and logs. Use one API replica for this beta. The durable worker runs inside the API by default; a separate worker can use `node backend/dist/worker.js` with `RUN_WORKER=false` on the API.
-6. Set frontend `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_WEB_URL`; retain Supabase public values. Re-export with a clean Metro cache. Public variables are compiled into bundles. `test:ui` builds demo mode and must not supply the connected deployment artifact.
-7. Configure Supabase Auth site URL/redirects and keep email confirmation on. Resend can remain paused, but another SMTP provider is needed for public email signup: Supabase's default email service restricts recipients and is unsuitable for public launch. See [Supabase SMTP documentation](https://supabase.com/docs/guides/auth/auth-smtp).
+6. Deploy web with `railway up --service web --environment staging --detach`. Its Dockerfile builds Expo with a clean Metro cache and demo mode disabled. Public variables are compiled into bundles. `test:ui` builds demo mode and must not supply the connected deployment artifact.
+7. Supabase Auth site URL/redirects are configured. Keep email confirmation on. Resend can remain paused, but another SMTP provider is needed for public email signup: Supabase's default email service restricts recipients and is unsuitable for public launch. See [Supabase SMTP documentation](https://supabase.com/docs/guides/auth/auth-smtp).
 8. Sign in with a verified operator account and configure its UUID. Create a coach channel, complete sandbox Connect onboarding, upload real free/paid videos, approve the coach through the admin API, then publish.
 9. Complete hosted acceptance below before inviting testers. Create an isolated production Supabase environment before accepting real customer data.
 

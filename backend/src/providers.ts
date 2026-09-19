@@ -178,6 +178,7 @@ export function createProviders(c: Config): Providers {
       return (
         await s().billingPortal.sessions.create({
           customer,
+          configuration: c.STRIPE_PORTAL_CONFIGURATION_ID,
           return_url: `${c.APP_URL}/screen/memberships`,
         })
       ).url;
