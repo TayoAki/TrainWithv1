@@ -6,6 +6,8 @@ This branch implements a connected sandbox beta, deployed at [the TrainWith prev
 
 The [19 September readiness review](docs/launch/READINESS_REVIEW_2026-09-19.md) ranks the remaining work and explains signup, creator uploads, Stripe versus RevenueCat, and the Xcode/TestFlight release path.
 
+Use the [beta checklist](docs/launch/BETA_CHECKLIST.md) to track account setup, web acceptance tests, internal TestFlight packaging and the gates for inviting testers.
+
 ## Run connected development
 
 Use Node 22.22.2 (`nvm use`). Configure `.env.local` and `backend/.env.local` from the example files. Credentials stay out of Git.
@@ -51,7 +53,7 @@ Clean Metro caches when switching public environment values: they are compiled i
 - `backend/tests/`: PostgreSQL/API integration tests.
 - `Dockerfile`, `Dockerfile.web`, `deploy/Caddyfile`, `.railway/railway.ts`: Railway API/web builds and infrastructure.
 - `docs/setup/BACKEND.md`: credentials, operational runbook, API map and remaining launch work.
-- `docs/launch/`: the pre-implementation launch audit and plan; historical baseline.
+- `docs/launch/`: launch plans, readiness reviews and the working beta checklist.
 
 The marketing site in the separate FitME workspace is not rebuilt or deployed by this backend change.
 
