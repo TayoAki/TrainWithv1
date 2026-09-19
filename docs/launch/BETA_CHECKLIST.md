@@ -102,7 +102,8 @@ Retest result and build:
 - [x] US StoreKit storefront module, checkout eligibility checks, system-browser Stripe links and safe app-return screens are implemented. Expo autolinking finds both the storefront and Apple age-range modules. This is not a signed-device result.
 - [x] Explicit deletion with fresh password confirmation, immediate restrictions, durable cleanup/retry and a private status receipt is implemented. Automated failure/retry tests cover media, billing, Auth deletion and delayed events.
 - [x] Report creator/workout, block/unblock, server/RLS filtering, review dashboard, content removal and private support intake are implemented. Profiles, workouts and programs need review; edits invalidate approval.
-- [x] Backend migration and authorization tests: 20 passed. Lint/typecheck and 10 domain tests passed. Demo web interaction suite: 12 groups passed.
+- [x] Backend migration and authorization tests: 20 passed. Lint/typecheck and 10 domain tests passed. Demo web interaction suite: 12 groups; connected suite: 7 groups. iOS/Android JavaScript exports passed.
+- [x] Source `3d7fc35` deployed successfully to staging web/API. Live deletion of a disposable creator, private Mux video, empty Stripe test customer and Supabase Auth account completed and was independently verified. This did not create or cancel a paid subscription.
 - [ ] Assign the real operator account and daily moderation/support responsibility; no app user existed at the configuration check.
 - [ ] Supply the legal operator name and public support/privacy email. [Store disclosure worksheet](STORE_DISCLOSURES.md) is prepared; App Store Connect disclosures and signed SDK manifests still need completion.
 - [ ] Complete real creator upload, sandbox purchase/cancel/refund and creator-account deletion through the hosted app, then physical-device acceptance. Automated provider fixtures do not satisfy these checks.

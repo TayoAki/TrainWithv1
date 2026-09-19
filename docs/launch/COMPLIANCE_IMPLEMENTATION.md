@@ -30,3 +30,17 @@ Validation on 19 September 2026: lint and TypeScript passed; 10 domain tests, 20
 4. Configure the permanent bundle ID/signing team/EAS store build, US-only availability, Free price, privacy disclosures and age rating in App Store Connect. Use the [disclosure worksheet](STORE_DISCLOSURES.md).
 5. Build and test on real devices: US/non-US/unknown storefronts, storefront change while checkout is open, age-range outcomes, browser purchase/cancel/return, auth and signed playback. Xcode 26.0.1 on this Mac is below Expo SDK 57's requirement; upgrade or use the configured supported EAS image. No TestFlight build has been submitted by this change.
 6. Complete the remaining [beta checklist](BETA_CHECKLIST.md) before inviting testers. Production billing remains disabled; platform fees, taxes, refunds, operational retention and production hardening remain separate launch gates.
+
+## Hosted deployment and deletion evidence
+
+Source commit: `3d7fc35`. Railway staging API deployment `d8062d4a-174c-4563-86fb-5c8a17808245` and web deployment `491d1724-94d6-46a8-a0a5-d9238726501e` both reported SUCCESS on 19 September 2026. Public configuration reports sandbox mode, age 18, US iOS eligibility enabled, and legal identity still incomplete. The hosted browser renders the new Settings, Privacy and Delete account screens.
+
+A disposable, admin-created verified account was used for a live cleanup test. It accepted the adult policy, claimed a private creator channel, saved a draft workout, uploaded the existing short demo clip through the hosted Mux endpoint, received the ready webhook and played signed media successfully. An empty Stripe test customer was associated with this fixture. Fresh-password deletion was requested through the hosted app API. The hosted worker completed it; independent provider/database checks confirmed:
+
+- Supabase Auth user no longer exists (404).
+- Profile, creator, workout and customer mapping are absent.
+- Mux asset no longer exists (404).
+- Stripe test customer is marked deleted.
+- Private receipt reports completion and the durable job's user ID/private payload are cleared.
+
+No real money, subscription purchase or payout was created. This proves hosted media/customer/account cleanup, not signup email delivery, checkout payment, incoming creator subscription cancellation or App Store behavior. Those remain in the beta acceptance list; subscription cancellation and provider failures are covered by the automated integration suite. Disposable credentials/receipt were cleared after verification and are not in Git.
