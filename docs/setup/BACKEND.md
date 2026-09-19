@@ -23,24 +23,23 @@ Status: 19 September 2026. Implemented for a connected sandbox beta. The Supabas
 | Build               | Root `Dockerfile`, Node 22, non-root runtime                                  |
 | Infrastructure      | `.railway/railway.ts`, applied to staging                                     |
 
-Supabase URL/public key, Stripe sandbox secret, port, worker flag and a **0% sandbox platform fee** are saved as staging variables. This fee is a test setting, not an agreed commercial fee. Production has no credentials or deployment.
+Supabase URL/public key, the verified database connection and CA certificate, Stripe sandbox secret, port, worker flag and a **0% sandbox platform fee** are saved as staging variables. This fee is a test setting, not an agreed commercial fee. Production has no credentials or deployment.
 
-The reserved hostname is not a working API yet. Migration `202609190001_trainwith.sql` was applied transactionally through the authenticated Supabase SQL editor. An independent query confirmed all **17 application tables have RLS enabled**. The migration checksum is recorded so the CLI will recognize it when credentials are provided. No API deployment was attempted without the database password. `/readyz` prevents a disconnected API from passing deployment readiness.
+The reserved hostname is not a working API yet. Migration `202609190001_trainwith.sql` was applied transactionally through the authenticated Supabase SQL editor. An independent query confirmed all **17 application tables have RLS enabled**. The supplied temporary database password is verified, and the database connection and Supabase CA are configured locally and on Railway staging. Certificate and hostname verification remain enabled. The migration checksum matches the repository. Local API checks against the real database return 200 for `/readyz` and `/v1/state`. The API still needs its HTTPS frontend URL and provider setup before deployment. `/readyz` prevents a disconnected API from passing deployment readiness.
 
 Railway infrastructure changes require `railway config plan` followed by a reviewed `railway config apply`. Railway does not automatically read `.railway/` during app deployments. The root Dockerfile is auto-detected. See [Railway's IaC guide](https://docs.railway.com/infrastructure-as-code).
 
 ## Inputs still required
 
-| Input                                           | Purpose and location                                                                                                                |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Supabase DB password                            | Replace `[YOUR-PASSWORD]` in ignored `backend/.env.database.local` with the URL-encoded password; enables migration and API queries |
-| `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`              | Backend/Railway; Video API upload and asset access                                                                                  |
-| `MUX_SIGNING_KEY_ID`, `MUX_SIGNING_PRIVATE_KEY` | Backend/Railway; signed playback                                                                                                    |
-| `MUX_WEBHOOK_SECRET`                            | Backend/Railway after creating the Mux webhook destination                                                                          |
-| `STRIPE_WEBHOOK_SECRET`                         | Backend/Railway after creating the account webhook destination                                                                      |
-| `STRIPE_CONNECT_WEBHOOK_SECRET`                 | Backend/Railway after creating the connected-account event destination                                                              |
-| `APP_URL`, `ALLOWED_ORIGINS`                    | Actual HTTPS Expo web-app URL; provider return URLs and allowed browser origins                                                     |
-| `ADMIN_USER_IDS`                                | Supabase Auth UUIDs of operators who may approve channels and read support                                                          |
+| Input                                           | Purpose and location                                                            |
+| ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`              | Backend/Railway; Video API upload and asset access                              |
+| `MUX_SIGNING_KEY_ID`, `MUX_SIGNING_PRIVATE_KEY` | Backend/Railway; signed playback                                                |
+| `MUX_WEBHOOK_SECRET`                            | Backend/Railway after creating the Mux webhook destination                      |
+| `STRIPE_WEBHOOK_SECRET`                         | Backend/Railway after creating the account webhook destination                  |
+| `STRIPE_CONNECT_WEBHOOK_SECRET`                 | Backend/Railway after creating the connected-account event destination          |
+| `APP_URL`, `ALLOWED_ORIGINS`                    | Actual HTTPS Expo web-app URL; provider return URLs and allowed browser origins |
+| `ADMIN_USER_IDS`                                | Supabase Auth UUIDs of operators who may approve channels and read support      |
 
 The DB file uses the observed Supabase session pooler host for this project. TLS certificate verification remains enabled; use `DATABASE_CA_CERT` if the provider requires its project CA. Never disable certificate verification.
 
@@ -50,7 +49,7 @@ Secrets are excluded from Git and Docker. Configure Railway secrets through its 
 
 ## Finish provisioning
 
-1. Save the DB password; run `npm --prefix backend run migrate`. Migrations are transactional and checksum-tracked, and do not modify existing `public` tables. Never edit a migration after it is applied. Set `DATABASE_URL` on staging/api securely. Before production, create a restricted API database role and keep the administrative migration credential separate.
+1. The initial schema and database credentials are configured. Use `npm --prefix backend run migrate` for future migrations. Migrations are transactional and checksum-tracked, and do not modify existing `public` tables. Never edit a migration after it is applied. When rotating the database password, update the ignored local database file and Railway `DATABASE_URL` together. Before production, create a restricted API database role and keep the administrative migration credential separate.
 2. Set `APP_URL` and exact `ALLOWED_ORIGINS` to the deployed Expo app, and `NODE_ENV=production`. Hosted mode requires HTTPS. Local development uses ports 3001 (API) and 8081 (Expo).
 3. Configure Mux Video credentials, a playback signing key and webhook destination `https://api-staging-4654.up.railway.app/webhooks/mux`. Subscribe to upload asset-created and asset ready/errored events. Save its webhook secret.
 4. Create sandbox Stripe destinations at `https://api-staging-4654.up.railway.app/webhooks/stripe`. Account events: `checkout.session.completed`, `customer.subscription.created/updated/deleted`, `invoice.paid`, `invoice.payment_failed`, `charge.refunded`, `charge.dispute.created/updated/closed`. Connected-account events: `account.updated`, `payout.created/updated/paid/failed/canceled`. Save each destination's signing secret. Configure the billing portal for cancellation and payment-method changes, without arbitrary subscription price changes.
