@@ -257,6 +257,21 @@ test("drafts, signed media authorization and unready publish behavior", async ()
     200,
   );
 });
+test("a late Mux upload-created event cannot regress a ready asset", async () => {
+  await enqueue(db, "mux", {
+    id: "mux_created_late",
+    type: "video.upload.asset_created",
+    data: { id: "upload_fixture", asset_id: "asset_fixture" },
+  });
+  await processNext(db, providers);
+  const row = (
+    await db.query(
+      "select status,playback_id from trainwith_private.video_assets where workout_id='workout_fixture'",
+    )
+  ).rows[0];
+  assert.equal(row.status, "ready");
+  assert.equal(row.playback_id, "playback_fixture");
+});
 test("Checkout rejects client price, reuses a session and does not grant access", async () => {
   await db.query(
     "update trainwith.creators set approved=true,published=true,price_cents=1900 where id=$1",

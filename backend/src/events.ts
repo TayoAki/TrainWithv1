@@ -240,7 +240,7 @@ async function muxEvent(db: DB, p: Providers, e: ProviderEvent) {
   const d = e.data;
   if (e.type === "video.upload.asset_created") {
     await db.query(
-      "update trainwith_private.video_assets set asset_id=$1,status='processing',updated_at=now() where upload_id=$2",
+      "update trainwith_private.video_assets set asset_id=$1,status='processing',updated_at=now() where upload_id=$2 and status in ('waiting','processing')",
       [d.asset_id, d.id],
     );
     return;
