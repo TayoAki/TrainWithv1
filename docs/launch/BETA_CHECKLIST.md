@@ -2,6 +2,8 @@
 
 Created 19 September 2026 from the [readiness review](READINESS_REVIEW_2026-09-19.md). This is the working task list; unchecked items still need implementation or verification.
 
+Updated after the [payment and store-policy review](PAYMENT_POLICY_REVIEW_2026-09-19.md): a free download does not resolve paid-content rules, RevenueCat is optional, and TestFlight compliance work must happen before submission/distribution.
+
 **First milestone:** a private web beta with real accounts, creator-owned videos and Stripe sandbox payments. Then distribute an internal TestFlight build for mobile testing. Suggested first group: 1–2 creators and 3–5 consumers, invited after the relevant checks pass.
 
 **Beta scope:** creators upload through the web studio; consumers test discovery, memberships and playback. No real charges or payouts. Native purchases remain disabled. Resend and Sentry remain paused; verification email delivery and an assigned support contact are still needed.
@@ -39,14 +41,16 @@ These checks describe infrastructure and implementation, not completed user jour
 
 ## 3. Package and test the iPhone beta
 
+**Before TestFlight submission/distribution:** complete B22, the applicable B23 review preparation, and B27–B29 below. Local device/build verification can proceed while those tasks are in progress. Internal TestFlight is not a policy exemption.
+
 - [ ] **B13 — You:** Confirm an active Apple Developer Program membership, signing team and App Store Connect access. Choose the permanent bundle identifier and confirm the TrainWith app record. An Apple login alone is insufficient.
 - [ ] **B14 — Development:** Configure app identity, version/build number, signing and an EAS **store-distribution** profile. EAS is the recommended first build route; local Xcode is an alternative after upgrading to the version required by Expo SDK 57. The audited Mac's Xcode 26.0.1 is below that requirement.
 - [ ] **B15 — Development:** Configure native build variables with the hosted staging API/web URLs and Supabase public values, with demo mode off. Confirm no localhost URLs or server secrets are bundled. Railway variables do not automatically configure a native build.
 - [ ] **B16 — Development:** Produce a signed iOS archive, upload it to App Store Connect, resolve processing issues and install it through internal TestFlight. Record the build number. A successful JavaScript export does not satisfy this task.
 - [ ] **B17 — Together:** On physical devices, test fresh install, verified signup/login, app relaunch, account switching, free and paid playback, seeking, background/foreground return, expired video tokens and interrupted networking. Include iPad while the app declares iPad support.
-- [ ] **B18 — Development:** Verify the native beta clearly explains its limits: creator uploads happen on web and new native purchases are disabled. Existing sandbox memberships must load and authorize playback correctly. RevenueCat is not required for this limited beta.
+- [ ] **B18 — Development:** Verify the native beta clearly explains its limits: creator uploads happen on web and new native purchases are disabled. Existing sandbox memberships must load and authorize playback correctly. RevenueCat is optional; confirm the permitted payment/access model through B27.
 
-**Internal TestFlight gate:** B13–B18 pass and the web acceptance checks remain valid for the backend used by that build. Internal testers must have appropriate App Store Connect access; ordinary customers belong in an external testing group when it is ready.
+**Internal TestFlight gate:** the preceding compliance gate and B13–B18 pass, and the web acceptance checks remain valid for the backend used by that build. Internal testers must have appropriate App Store Connect access; ordinary customers belong in an external testing group when it is ready.
 
 ## 4. Run a controlled test round
 
@@ -69,13 +73,16 @@ Retest result and build:
 
 **P0:** unauthorized access, payment/access corruption, data loss or an app-wide outage — stop the affected testing immediately. **P1:** a core signup, upload, purchase or playback journey cannot finish — fix before widening the beta. **P2:** an issue with a usable workaround or cosmetic defect — track with an owner. No open P0 or core-journey P1 issues at a release gate.
 
-## 5. Before external TestFlight or a paid public launch
+## 5. Store compliance and paid launch gates
 
-- [ ] **B22 — Development:** Implement in-app account deletion, account recovery/resend flows, accessible privacy/terms/support pages, and content/user reporting, blocking and moderation. Verify deletion and moderation outcomes, not just the presence of buttons.
+- [ ] **B22 — Development, before TestFlight:** Implement explicit in-app account deletion, account recovery/resend flows, accessible privacy/terms/support pages, and content/user reporting, blocking and moderation. Verify deletion and moderation outcomes, including associated data, billing handling and confirmation of completion. A generic support request is insufficient.
 - [ ] **B23 — Together:** Prepare beta review information, working review credentials, privacy and export-compliance declarations, and external TestFlight review where required. Decide which countries/storefronts the beta supports. Follow the [release and policy guidance in the readiness review](READINESS_REVIEW_2026-09-19.md).
 - [ ] **B24 — Together, before native paid sales:** Choose the store billing/access model for the intended storefronts. If using in-app purchases, implement and test purchase, restore, refund/expiry and per-creator entitlements. RevenueCat is optional tooling for store billing; it does not pay creators. Define creator settlement for store proceeds separately from Stripe web payments.
 - [ ] **B25 — Together, before real money:** Agree fees, countries, taxes, refunds and payout responsibility; activate payment readiness; create separate production configuration and complete controlled live acceptance. The app currently rejects live Stripe keys, so replacing a key is not sufficient.
 - [ ] **B26 — Development, before production:** Restrict the runtime database role, separate production from staging, rotate temporary/shared credentials, test backup restoration and establish alerts, support and reconciliation procedures. Sentry is optional; operational ownership is not.
+- [ ] **B27 — Together, before TestFlight:** Confirm intended storefronts and document the permitted access/payment model for them. Verify the app's download price is Free in App Store Connect. For a US external-Checkout release, implement and test storefront detection, browser purchase and return handling before enabling links. For other markets, establish IAP, reader eligibility or applicable regional terms; do not assume worldwide Stripe permission. Keep the beta's new native purchases disabled until its chosen flow passes.
+- [ ] **B28 — Together, before TestFlight:** Decide the intended age audience; add inappropriate-content reporting and required age restrictions. Complete the current age-rating questionnaire accurately and assess applicable regional age requirements. Verify privacy disclosures and SDK manifests in the signed build.
+- [ ] **B29 — Development, before TestFlight:** Replace misleading native Join/purchase prompts with the chosen supported experience, remove “Sample coach profile” from real profiles, and replace or verify the hard-coded planned share domain. Check membership cancel/resume and every outbound link against the selected payment model.
 
 ## Links and evidence log
 
@@ -83,7 +90,8 @@ Retest result and build:
 - [Railway project](https://railway.com/project/c5175ac7-0da8-4a7d-90cf-560b944fc091)
 - [Backend setup and runbook](../setup/BACKEND.md)
 - [Full readiness review and official sources](READINESS_REVIEW_2026-09-19.md)
+- [Payment and store-policy findings and official sources](PAYMENT_POLICY_REVIEW_2026-09-19.md)
 
 | Task    | Environment / commit or build | Evidence and result                                                                            | Tested by / date |
 | ------- | ----------------------------- | ---------------------------------------------------------------------------------------------- | ---------------- |
-| B01–B26 | Pending                       | Add a row when each task is verified; do not store credentials or private tester details here. | —                |
+| B01–B29 | Pending                       | Add a row when each task is verified; do not store credentials or private tester details here. | —                |

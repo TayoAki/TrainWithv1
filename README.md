@@ -8,6 +8,8 @@ The [19 September readiness review](docs/launch/READINESS_REVIEW_2026-09-19.md) 
 
 Use the [beta checklist](docs/launch/BETA_CHECKLIST.md) to track account setup, web acceptance tests, internal TestFlight packaging and the gates for inviting testers.
 
+The [payment and store-policy review](docs/launch/PAYMENT_POLICY_REVIEW_2026-09-19.md) explains the limits of Stripe-only native billing and the compliance gaps to resolve before submission.
+
 ## Run connected development
 
 Use Node 22.22.2 (`nvm use`). Configure `.env.local` and `backend/.env.local` from the example files. Credentials stay out of Git.
