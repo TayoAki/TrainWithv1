@@ -4,6 +4,8 @@ Expo SDK 57 app with a Fastify API, Supabase authentication/PostgreSQL, Stripe s
 
 This branch implements a connected sandbox beta, deployed at [the TrainWith preview](https://web-staging-ff99.up.railway.app). The hosted API connects to Supabase, Mux Video and Stripe sandbox. A real Mux upload, webhook delivery and protected playback have been verified. Native purchases and live Stripe payments are disabled. See [backend setup and current status](docs/setup/BACKEND.md) for admin setup, public auth email delivery and the remaining acceptance checks.
 
+The [19 September readiness review](docs/launch/READINESS_REVIEW_2026-09-19.md) ranks the remaining work and explains signup, creator uploads, Stripe versus RevenueCat, and the Xcode/TestFlight release path.
+
 ## Run connected development
 
 Use Node 22.22.2 (`nvm use`). Configure `.env.local` and `backend/.env.local` from the example files. Credentials stay out of Git.
